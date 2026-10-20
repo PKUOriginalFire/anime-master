@@ -49,6 +49,7 @@ export function maxStep(q:Question):number {return q.kind==='scene'?Math.max(0,.
 export function maxAnswerStep(q:Question):number {return Math.max(1,...(q.answerGallery||[]).map(i=>i.group));}
 export function validateReady(q:Question):string[] {
  const errors:string[]=[];
+ if(!q.title.trim())errors.push('请填写题目标题');
  if(!q.prompt.trim())errors.push('请填写题干');
  if(!q.answer.trim())errors.push('请填写答案');
  if(q.answerGallery?.some(i=>!i.image))errors.push('请上传每张结算素材图片，或移除空白项');

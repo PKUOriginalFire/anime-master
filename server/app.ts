@@ -29,7 +29,11 @@ async function passwordMatches(password:string,stored:string){const [salt,hash]=
 const usernameInput=z.string().trim().min(1).max(32);
 const usernameSchema=usernameInput.regex(/^[\p{L}\p{N}_-]+$/u,'用户名只能包含文字、数字、下划线或连字符');
 const credentials=z.object({username:usernameSchema,password:z.string().min(10).max(128)});
-const canRead=(u:User,q:QuestionRow)=>u.admin||q.authorId===u.id||(u.reviewer?q.status!=='draft'&&q.status!=='deleted':!['draft','deleted','pending','to_implement'].includes(q.status));
+const canRead=(u:User,q:QuestionRow)=>{
+ if(u.admin||q.authorId===u.id)return true;
+ if(u.reviewer)return q.status!=='draft'&&q.status!=='deleted';
+ return u.host&&q.status==='accepted';
+};
 const canEdit=(u:User,q:QuestionRow)=>u.admin||q.authorId===u.id||(u.reviewer&&q.status!=='draft'&&q.status!=='deleted');
 // 已有导入账号可能含旧版允许的标点，登录保留兼容，注册与改名执行新规则。
 const loginCredentials=z.object({username:usernameInput,password:z.string().min(6).max(128)});
@@ -62,7 +66,7 @@ export async function buildApp(options:Options={}){
  const reviewShow=(s:Show):Show=>{const {displayKey:_key,...safe}=s;return safe;};
  const visibleShow=(u:User,s:Show)=>u.admin||(u.host&&s.ownerId===u.id)?s:reviewShow(s);
  const visibleQuestion=(u:User,id:string)=>{const q=getQ(id);if(!canRead(u,q))fail(403,'没有查看权限');return q;};
- const assertAssets=(u:User,q:unknown,existing?:unknown)=>{const existingIds=new Set(assetIds(existing));for(const id of assetIds(q)){const m=store.one('SELECT * FROM media WHERE id=?',id);if(!m)fail(400,'题目引用了不存在的素材');if(m.owner_id!==u.id&&!u.admin&&!existingIds.has(id)&&!store.all('SELECT id FROM questions').some(r=>{const q=store.question(r.id)!;return canRead(u,q)&&assetIds(q).includes(id);}))fail(403,'不能引用私有素材');}};
+ const assertAssets=(u:User,q:unknown,existing?:unknown)=>{const existingIds=new Set(assetIds(existing));for(const id of assetIds(q)){const m=store.one('SELECT * FROM media WHERE id=?',id);if(!m)fail(400,'题目引用了不存在的素材');if(m.owner_id!==u.id&&!u.admin&&!existingIds.has(id)&&!store.all('SELECT id FROM questions').some(r=>{const q=store.question(r.id)!;return (canRead(u,q)||q.status==='accepted')&&assetIds(q).includes(id);}))fail(403,'不能引用私有素材');}};
  const saveRevision=(q:QuestionRow,actor:string,note:string)=>store.revision(q,actor,note);
  const emitPresence=(id:string)=>io.to(id+':host').emit('presence',[...presence.values()].filter(p=>p.showId===id&&Date.now()-p.last<15000));
  function broadcast(id:string){const s=getShow(id);io.to(id+':display').emit('state',publicPacket(s));io.to(id+':host').emit('state',s);io.to(id+':review').emit('state',reviewShow(s));}

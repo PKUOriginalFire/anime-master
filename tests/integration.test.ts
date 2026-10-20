@@ -30,12 +30,18 @@ test('草稿隔离、提交留言、审题权限、录用后重审与并发保�
   assert.equal((await request(c,reader,'PUT',`/api/questions/${q.id}`,{version:2,question:sample()})).statusCode,403);
   assert.equal((await request(c,author,'POST',`/api/questions/${q.id}/status`,{version:2,status:'accepted'})).statusCode,403);
   const accepted=(await request(c,admin,'POST',`/api/questions/${q.id}/status`,{version:2,status:'accepted',note:'审核通过'})).json();assert.equal(accepted.status,'accepted');
+  assert.equal((await request(c,reader,'GET','/api/questions')).json().some((x:any)=>x.id===q.id),false);
+  assert.equal((await request(c,reader,'GET','/api/questions/'+q.id)).statusCode,403);
+  assert.equal((await request(c,author,'GET','/api/questions/'+q.id)).statusCode,200);
+  assert.equal((await request(c,admin,'GET','/api/questions/'+q.id)).statusCode,200);
   const changed=(await request(c,author,'PUT',`/api/questions/${q.id}`,{version:accepted.version,question:{...sample(),prompt:'修订后的题干'}})).json();assert.equal(changed.status,'pending');
   assert.equal((await request(c,author,'PUT',`/api/questions/${q.id}`,{version:accepted.version,question:sample()})).statusCode,409);
   const removed=(await request(c,admin,'POST',`/api/questions/${q.id}/status`,{version:changed.version,status:'deleted'})).json();assert.equal(removed.status,'deleted');
   assert.equal((await request(c,reader,'GET',`/api/questions/${q.id}/comments`)).statusCode,403);
   assert.equal((await request(c,author,'POST',`/api/questions/${q.id}/status`,{version:removed.version,status:'restore'})).statusCode,403);
   assert.equal((await request(c,admin,'POST',`/api/questions/${q.id}/status`,{version:removed.version,status:'restore'})).json().status,'pending');
+  assert.equal((await request(c,reader,'GET','/api/questions')).json().some((x:any)=>x.id===q.id),false);
+  assert.equal((await request(c,reader,'GET','/api/questions/'+q.id)).statusCode,403);
   assert.equal((await request(c,admin,'GET',`/api/questions/${q.id}/history`)).json().length,6);
  }finally{await c.cleanup();}
 });
@@ -125,6 +131,26 @@ test('真实 Socket.IO：展示只读、主持同步、重连快照与权限撤�
   display.disconnect();const reconnected=client(url,{auth:{showId:s.id,mode:'display',key:s.displayKey},forceNew:true});sockets.push(reconnected);const packet:any=await new Promise((resolve,reject)=>{reconnected.once('state',resolve);reconnected.once('connect_error',reject);});assert.equal(packet.version,s.version);assert.equal(packet.state.phase,'question');assert.ok(!JSON.stringify(packet).includes('displayKey'));
   const user=c.store.all('SELECT id FROM users')[0];c.store.run('UPDATE users SET disabled=1 WHERE id=?',user.id);const refused=await host.timeout(2000).emitWithAck('command',{id:randomUUID(),version:s.version,action:'waiting'});assert.equal(refused.ok,false);
  }finally{for(const s of sockets)s.disconnect();await c.cleanup();}
+});
+
+test('主持人仅能读取录用题目，普通用户不可见他人题目',async()=>{
+ const c=await fixture();try{
+  const admin=await login(c);
+  for(const username of ['host','viewer']){const r=await c.app.inject({method:'POST',url:'/api/register',payload:{username,password:'TestPassword-12345'}});assert.equal(r.statusCode,200,r.body);}
+  c.store.run('UPDATE users SET host=1 WHERE username=?','host');
+  const host=await login(c,'host'),viewer=await login(c,'viewer');
+  let q=(await request(c,admin,'POST','/api/questions',sample())).json();
+  assert.equal((await request(c,host,'GET','/api/questions/'+q.id)).statusCode,403);
+  assert.equal((await request(c,viewer,'GET','/api/questions/'+q.id)).statusCode,403);
+  q=(await request(c,admin,'POST',`/api/questions/${q.id}/status`,{version:q.version,status:'pending'})).json();
+  assert.equal((await request(c,host,'GET','/api/questions/'+q.id)).statusCode,403);
+  assert.equal((await request(c,viewer,'GET','/api/questions/'+q.id)).statusCode,403);
+  q=(await request(c,admin,'POST',`/api/questions/${q.id}/status`,{version:q.version,status:'accepted'})).json();assert.equal(q.status,'accepted');
+  assert.equal((await request(c,host,'GET','/api/questions/'+q.id)).statusCode,200);
+  assert.ok((await request(c,host,'GET','/api/questions')).json().some((x:any)=>x.id===q.id));
+  assert.equal((await request(c,viewer,'GET','/api/questions/'+q.id)).statusCode,403);
+  assert.equal((await request(c,viewer,'GET','/api/questions')).json().some((x:any)=>x.id===q.id),false);
+ }finally{await c.cleanup();}
 });
 
 test('服务重启恢复现场状态并暂停媒体',async()=>{
