@@ -1,0 +1,12 @@
+node_modules
+dist
+runtime
+.local
+.serena
+.git
+.env
+test-results
+playwright-report
+qa
+release
+*.tgz

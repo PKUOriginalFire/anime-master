@@ -1,0 +1,36 @@
+node_modules/
+dist/
+runtime/
+.env*
+!.env.example
+.local/
+test-results/
+playwright-report/
+.serena/
+.qoder/
+qa/
+release/
+__pycache__/
+.DS_Store
+*.log
+
+# 公开仓库排除：部署与运维私有信息
+/AGENTS.md
+/deploy/
+/compose.yaml
+/compose.dev.yaml
+/docs/DEPLOYED.md
+/docs/REMOTE-DEVELOPMENT.md
+/docs/VALIDATION.md
+/docs/FULL-DECK.md
+
+# 公开仓库排除：真实活动题库、署名与媒体素材
+/seed/full-deck.json
+/seed/questions.json
+/seed/option-image-patches.json
+/seed/media/
+/scripts/import-full-deck.py
+/scripts/import-examples.py
+/scripts/package.py
+/scripts/preview-full.ts
+/tests/full-deck.test.ts

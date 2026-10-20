@@ -1,0 +1,9 @@
+/* 创新题、待实现状态与管理员自动权限的补充样式。 */
+.status-to_implement{background:#eaf1fb;color:#6b84ad}
+.kind-card-innovation .question-art{background:#edf5f2;color:#82ad9e}
+.kind-card-innovation .question-art>i{border-color:#cfe4dc;box-shadow:0 0 0 12px #e1efea}
+.page-heading .workflow-hint{margin:9px 0 0;font-size:10px;color:#a0a7b3;line-height:1.8}
+.workflow-presentation{margin:0;padding:12px 15px;background:#f7f9fc;border:1px solid #e8edf5;border-radius:8px;color:#5f6b7a;font-size:12px;line-height:1.9}
+.review-actions .workflow-note{flex-basis:100%;margin:0;padding:11px 13px;background:#f6f8fb;border:1px solid #e9eef5;border-radius:8px;font-size:11px;color:#7f8998;line-height:1.8}
+.account-role-note{margin:-6px 0 16px;font-size:11px;color:#98a0ad;line-height:1.8}
+.account-roles input:disabled{cursor:not-allowed}

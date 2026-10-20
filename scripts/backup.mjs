@@ -1,0 +1,13 @@
+import {DatabaseSync} from 'node:sqlite';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+const dir=process.env.DATA_DIR||'runtime';
+const destination=join(dir,'backups',new Date().toISOString().replaceAll(':','-'));
+mkdirSync(destination,{recursive:true,mode:0o700});
+const db=new DatabaseSync(join(dir,'quiz.sqlite'));
+db.exec("VACUUM INTO '"+join(destination,'quiz.sqlite').replaceAll("'","''")+"'");
+db.close();
+execFileSync('tar',['-czf',join(destination,'media.tgz'),'-C',dir,'media']);
+writeFileSync(join(destination,'manifest.json'),JSON.stringify({createdAt:new Date().toISOString(),schema:1,description:'先恢复数据库，再解包 media.tgz 到数据目录；恢复前停止应用。'},null,2));
+console.log(destination);
