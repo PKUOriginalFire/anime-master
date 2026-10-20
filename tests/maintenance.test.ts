@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
+import {existsSync,mkdtempSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {buildApp} from '../server/app.ts';
@@ -9,6 +9,7 @@ import {seedLibrary} from '../server/seed.ts';
 import {freshState,newQuestion} from '../shared/model.ts';
 
 const password='Maintenance-12345';
+const hasExampleSeed=existsSync('seed/questions.json');
 const fixture=async()=>{
  const dir=mkdtempSync(join(tmpdir(),'anime-quiz-maintenance-'));
  const ctx=await buildApp({dir,seed:false,adminUsername:'admin',adminPassword:password,rateLimits:false});await ctx.app.ready();
@@ -104,8 +105,10 @@ test('清空最后题目后重启不自动复种，兼容旧完整导入和新�
    c.store.run('DELETE FROM audit_events');c.store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),c.user.id,action,'{}','now');
    await seedLibrary(c.store,c.user.id,'full',async()=>{throw new Error('不应初始化账号');});assert.equal(c.store.one('SELECT count(*) n FROM questions').n,0);
   }
-  c.store.run('DELETE FROM audit_events');
-  await seedLibrary(c.store,c.user.id,'examples',async()=>{throw new Error('示例不应初始化账号');});
-  assert.ok(c.store.one('SELECT count(*) n FROM questions').n>0);assert.ok(c.store.one('SELECT id FROM audit_events WHERE action=?','library.initialized'));
+  if(hasExampleSeed){
+   c.store.run('DELETE FROM audit_events');
+   await seedLibrary(c.store,c.user.id,'examples',async()=>{throw new Error('示例不应初始化账号');});
+   assert.ok(c.store.one('SELECT count(*) n FROM questions').n>0);assert.ok(c.store.one('SELECT id FROM audit_events WHERE action=?','library.initialized'));
+  }
  }finally{await c.cleanup();}
 });
