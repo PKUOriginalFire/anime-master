@@ -9,7 +9,7 @@ import {freshState,type QuestionRow,type Show} from '../shared/model.ts';
 
 const presentation='三位观众上台，用肢体动作演绎词语，其他观众抢答。';
 const question:QuestionRow={kind:'innovation',id:'innovation',title:'舞台表现说明',prompt:'按舞台提示完成互动',answer:'参考答案：手舞足蹈',explanation:'解析文本',notes:'主持人私密备注',source:'',config:{presentation},authorId:'author-id',author:'出题人',status:'accepted',version:1,updatedAt:''};
-const showFor=(phase:Show['state']['phase']):Show=>({id:'stage-preview-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',items:[{id:'item',type:'question',question}],state:{...freshState(),phase}});
+const showFor=(phase:Show['state']['phase']):Show=>({id:'stage-preview-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',width:3904,height:672,items:[{id:'item',type:'question',question}],state:{...freshState(),phase}});
 const render=(show:Show)=>renderToStaticMarkup(createElement(Stage,{packet:publicPacket(show)}));
 
 test('创新题在舞台展示表现说明，未揭晓不泄漏答案与解析',()=>{

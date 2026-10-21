@@ -18,7 +18,7 @@ import {registerMaintenanceRoutes} from './maintenance.ts';
 import {seedLibrary} from './seed.ts';
 import {registerSceneRoute} from './scene.ts';
 import {advance,publicPacket} from './stage.ts';
-import {questionSchema,commandSchema,assetIds,validateReady,freshState,type User,type QuestionRow,type Show,type ShowItem} from '../shared/model.ts';
+import {questionSchema,commandSchema,assetIds,validateReady,freshState,stageSizeSchema,DEFAULT_STAGE_WIDTH,DEFAULT_STAGE_HEIGHT,type User,type Question,type QuestionRow,type Show,type ShowItem} from '../shared/model.ts';
 
 const scrypt=promisify(rawScrypt);const exec=promisify(execFile);
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
@@ -66,6 +66,9 @@ export async function buildApp(options:Options={}){
  const reviewShow=(s:Show):Show=>{const {displayKey:_key,...safe}=s;return safe;};
  const visibleShow=(u:User,s:Show)=>u.admin||(u.host&&s.ownerId===u.id)?s:reviewShow(s);
  const visibleQuestion=(u:User,id:string)=>{const q=getQ(id);if(!canRead(u,q))fail(403,'没有查看权限');return q;};
+ const hasActivities=()=>!!store.one('SELECT id FROM shows LIMIT 1');
+ // 已有活动时新题必须绑定活动；空实例仍可先写草稿，后续创建活动后再绑定。
+ const requireQuestionActivity=(q:Question)=>{if(q.activityId)getShow(q.activityId);else if(hasActivities())fail(400,'请选择题目所属活动');};
  const assertAssets=(u:User,q:unknown,existing?:unknown)=>{const existingIds=new Set(assetIds(existing));for(const id of assetIds(q)){const m=store.one('SELECT * FROM media WHERE id=?',id);if(!m)fail(400,'题目引用了不存在的素材');if(m.owner_id!==u.id&&!u.admin&&!existingIds.has(id)&&!store.all('SELECT id FROM questions').some(r=>{const q=store.question(r.id)!;return (canRead(u,q)||q.status==='accepted')&&assetIds(q).includes(id);}))fail(403,'不能引用私有素材');}};
  const saveRevision=(q:QuestionRow,actor:string,note:string)=>store.revision(q,actor,note);
  const emitPresence=(id:string)=>io.to(id+':host').emit('presence',[...presence.values()].filter(p=>p.showId===id&&Date.now()-p.last<15000));
@@ -136,11 +139,13 @@ export async function buildApp(options:Options={}){
  app.patch<{Params:{id:string}}>('/api/users/:id',async req=>{const u=requireAdmin(req);const patch=z.object({reviewer:z.boolean(),host:z.boolean(),admin:z.boolean(),disabled:z.boolean()}).parse(req.body);const target=store.user(req.params.id)||fail(404,'账号不存在');if(target.username==='admin'&&!patch.admin)fail(400,'admin 账号的管理员权限不能取消');if(target.admin&&(!patch.admin||patch.disabled)&&store.one('SELECT count(*) AS n FROM users WHERE admin=1 AND disabled=0').n<=1)fail(400,'必须保留至少一位可用管理员');const reviewer=patch.admin?true:patch.reviewer,host=patch.admin?true:patch.host;store.transaction(()=>{store.run('UPDATE users SET reviewer=?,host=?,admin=?,disabled=? WHERE id=?',+reviewer,+host,+patch.admin,+patch.disabled,target.id);accountAudit(u,'user.permissions.update',target,{...patch,reviewer,host});});revokeUserSessions(target.id);return {ok:true};});
  app.get('/api/questions',async req=>{const u=requireUser(req);return store.all('SELECT id FROM questions ORDER BY updated_at DESC').map(r=>store.question(r.id)!).filter(q=>canRead(u,q));});
  app.get<{Params:{id:string}}>('/api/questions/:id',async req=>visibleQuestion(requireUser(req),req.params.id));
- app.post('/api/questions',async req=>{const u=requireUser(req);const q=questionSchema.parse(req.body);assertAssets(u,q);const id=randomUUID();store.transaction(()=>{store.run('INSERT INTO questions VALUES(?,?,?,?,?,?)',id,u.id,'draft',1,JSON.stringify(q),now());saveRevision(store.question(id)!,u.id,'创建草稿');});return getQ(id);});
+ app.post('/api/questions',async req=>{const u=requireUser(req);const q=questionSchema.parse(req.body);requireQuestionActivity(q);assertAssets(u,q);const id=randomUUID();store.transaction(()=>{store.run('INSERT INTO questions VALUES(?,?,?,?,?,?)',id,u.id,'draft',1,JSON.stringify(q),now());saveRevision(store.question(id)!,u.id,'创建草稿');});return getQ(id);});
  app.put<{Params:{id:string}}>('/api/questions/:id',async req=>{
   const u=requireUser(req);const b=z.object({version:z.number().int(),question:questionSchema}).parse(req.body);
   const q=getQ(req.params.id);if(!canEdit(u,q)||q.status==='deleted')fail(403,'没有编辑权限');
   if(q.version!==b.version)fail(409,'题目已被其他人更新，请重新打开后再编辑');
+  if(b.question.activityId)getShow(b.question.activityId);
+  else if(q.activityId&&hasActivities())fail(400,'请选择题目所属活动');
   assertAssets(u,b.question);const status=['accepted','to_implement'].includes(q.status)?'pending':q.status;
   let affected:Show[]=[];
   store.transaction(()=>{
@@ -197,7 +202,8 @@ export async function buildApp(options:Options={}){
   if(!allowed)fail(403,'没有查看素材的权限');reply.type(m.mime).header('Cache-Control','private, no-store');return reply.sendFile(m.filename);
  });
  app.get('/api/shows',async req=>{const u=requireUser(req);requireShowRead(u);return store.all('SELECT id FROM shows').map(r=>getShow(r.id)).filter(s=>u.admin||u.reviewer||s.ownerId===u.id).map(s=>visibleShow(u,s));});
- app.post('/api/shows',async req=>{const u=requireUser(req);requireHost(u);const {title}=z.object({title:z.string().trim().min(1).max(120)}).parse(req.body);const id=randomUUID();const items:ShowItem[]=[{id:randomUUID(),type:'card',title,body:'欢迎来到元火动漫晚会 · 互动环节'}];store.run('INSERT INTO shows VALUES(?,?,?,?,?,?,?,?)',id,u.id,title,0,JSON.stringify(items),JSON.stringify(freshState()),'[]',randomBytes(32).toString('hex'));return getShow(id);});
+ app.get('/api/activity-options',async req=>{requireUser(req);return store.all('SELECT id,title,width,height FROM shows ORDER BY title COLLATE NOCASE,id').map((r:any)=>({id:r.id,title:r.title,width:Number(r.width)||DEFAULT_STAGE_WIDTH,height:Number(r.height)||DEFAULT_STAGE_HEIGHT}));});
+ app.post('/api/shows',async req=>{const u=requireUser(req);requireHost(u);const b=z.object({title:z.string().trim().min(1).max(120),width:stageSizeSchema.shape.width.optional(),height:stageSizeSchema.shape.height.optional()}).parse(req.body);const width=b.width??DEFAULT_STAGE_WIDTH,height=b.height??DEFAULT_STAGE_HEIGHT;const id=randomUUID();const items:ShowItem[]=[{id:randomUUID(),type:'card',title:b.title,body:'欢迎来到元火动漫晚会 · 互动环节'}];store.run('INSERT INTO shows(id,owner_id,title,version,items,state,history,display_key,width,height) VALUES(?,?,?,?,?,?,?,?,?,?)',id,u.id,b.title,0,JSON.stringify(items),JSON.stringify(freshState()),'[]',randomBytes(32).toString('hex'),width,height);return getShow(id);});
  app.get<{Params:{id:string}}>('/api/shows/:id',async req=>{const s=getShow(req.params.id);const u=requireUser(req);requireShowRead(u,s);return visibleShow(u,s);});
  app.delete<{Params:{id:string}}>('/api/shows/:id',async req=>{
   const u=requireUser(req);
@@ -216,6 +222,17 @@ export async function buildApp(options:Options={}){
   for(const [id,entry]of presence)if(entry.showId===deleted.id)presence.delete(id);
   for(const room of rooms)io.in(room).disconnectSockets(true);
   return {ok:true};
+ });
+ app.patch<{Params:{id:string}}>('/api/shows/:id/settings',async req=>{
+  const u=requireUser(req);
+  const body=z.object({version:z.number().int().nonnegative(),title:z.string().trim().min(1).max(120),width:stageSizeSchema.shape.width,height:stageSizeSchema.shape.height}).parse(req.body);
+  store.transaction(()=>{
+   const show=getShow(req.params.id);requireHost(u,show);
+   if(show.version!==body.version)fail(409,'活动已更新，请刷新后再修改设置');
+   store.run('UPDATE shows SET title=?,width=?,height=?,version=version+1 WHERE id=?',body.title,body.width,body.height,show.id);
+   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),u.id,'show.settings.update',JSON.stringify({showId:show.id,title:body.title,version:show.version+1,before:`${show.title} · ${show.width}×${show.height}`,after:`${body.title} · ${body.width}×${body.height}`}),now());
+  });
+  broadcast(req.params.id);return visibleShow(u,getShow(req.params.id));
  });
  app.patch<{Params:{id:string}}>('/api/shows/:id/title',async req=>{
   const u=requireUser(req);
@@ -245,6 +262,7 @@ export async function buildApp(options:Options={}){
     preservedIds.add(i.itemId);return existing;
    }
    const q=getQ(i.questionId);if(q.status!=='accepted')fail(400,'新增项目只能选已录用题目');
+   if(q.activityId&&q.activityId!==s.id)fail(400,'只能编排属于本活动的题目');
    return {id:randomUUID(),type:'question',question:q};
   });
   store.transaction(()=>{store.run('UPDATE shows SET title=?,items=?,version=version+1,state=?,history=? WHERE id=?',b.title,JSON.stringify(items),JSON.stringify(freshState()),'[]',s.id);});

@@ -23,7 +23,7 @@ const create=async(c:any,title:string,status='draft')=>{
  const r=await request(c,'POST','/api/questions',{...newQuestion('choice'),title});assert.equal(r.statusCode,200,r.body);
  c.store.run('UPDATE questions SET status=? WHERE id=?',status,r.json().id);return c.store.question(r.json().id)!;
 };
-const show=(c:any,q:any)=>{const id=randomUUID();c.store.run('INSERT INTO shows VALUES(?,?,?,?,?,?,?,?)',id,c.user.id,'仍在使用的活动',1,JSON.stringify([{id:'slot',type:'question',question:q}]),JSON.stringify(freshState()),'[]','test-key');return id;};
+const show=(c:any,q:any)=>{const id=randomUUID();c.store.run('INSERT INTO shows(id,owner_id,title,version,items,state,history,display_key) VALUES(?,?,?,?,?,?,?,?)',id,c.user.id,'仍在使用的活动',1,JSON.stringify([{id:'slot',type:'question',question:q}]),JSON.stringify(freshState()),'[]','test-key');return id;};
 const commands=[['/api/admin/trash/empty','清空回收站'],['/api/admin/history/clear','清理题目历史']] as const;
 
 test('维护接口只允许管理员，要求完整确认文字和当前快照',async()=>{

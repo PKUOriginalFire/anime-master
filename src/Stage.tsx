@@ -1,7 +1,7 @@
 import {createUuid} from '../shared/uuid';
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
 import {mediaUrl} from './api';
-import {kindNames,optionImages,type StagePacket,type MediaState,type Kind} from '../shared/model';
+import {kindNames,optionImages,DEFAULT_STAGE_WIDTH,DEFAULT_STAGE_HEIGHT,type StagePacket,type MediaState,type Kind} from '../shared/model';
 
 const stageLogo=new URL('./assets/club-logo.png',import.meta.url).href;
 
@@ -26,13 +26,16 @@ function Scene({config,full}:{config:any;full:boolean}){
 
 export function Stage({packet,preview=false,allowPreviewAudio=false,connected=true,onTelemetry,onPosition}:{packet:StagePacket;preview?:boolean;allowPreviewAudio?:boolean;connected?:boolean;onTelemetry?:(v:Telemetry)=>void;onPosition?:(v:number)=>void}){
  const box=useRef<HTMLDivElement>(null);const [width,setWidth]=useState(0);
+ const w=Number(packet.width)||DEFAULT_STAGE_WIDTH;const h=Number(packet.height)||DEFAULT_STAGE_HEIGHT;const ratio=w/h;
+ const layout=ratio>=3.2?'layout-cinema':ratio>=1.9?'layout-wide':ratio>=1.4?'layout-split':'layout-stack';
+ const layoutClass=layout+(ratio<0.85?' is-tall':'');
  useEffect(()=>{const ob=new ResizeObserver(e=>setWidth(e[0].contentRect.width));if(box.current)ob.observe(box.current);return()=>ob.disconnect();},[]);
- useEffect(()=>{let disposed=false;const fit=()=>{if(disposed||!box.current)return;for(const el of box.current.querySelectorAll<HTMLElement>('.stage-question h1,.stage-question>p,.stage-author,.stage-option span,.stage-clue p,.stage-answer-overlay h2,.stage-answer-overlay p,.stage-card h1,.stage-card p,.match-row p,.acting-stage p,.innovation-stage p')){el.style.fontSize='';let size=parseFloat(getComputedStyle(el).fontSize);while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>16){size-=1;el.style.fontSize=size+'px';}}};fit();document.fonts.ready.then(fit);return()=>{disposed=true;};},[packet]);
+ useEffect(()=>{let disposed=false;const minFont=Math.max(12,Math.min(h*0.024,w*0.012));const fit=()=>{if(disposed||!box.current)return;for(const el of box.current.querySelectorAll<HTMLElement>('.stage-question h1,.stage-question>p,.stage-author,.stage-option span,.stage-clue p,.stage-answer-overlay h2,.stage-answer-overlay p,.stage-card h1,.stage-card p,.match-row p,.acting-stage p,.innovation-stage p')){el.style.fontSize='';let size=parseFloat(getComputedStyle(el).fontSize);while((el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1)&&size>minFont){size-=1;el.style.fontSize=size+'px';}}};fit();document.fonts.ready.then(fit);return()=>{disposed=true;};},[packet,w,h]);
  const {state,item}=packet;const q=item?.type==='question'?item.question:undefined;const config=q?.config;const revealed=state.phase==='answer'||state.phase==='settlement';
  const options=q?.kind==='choice'?config.options:[];
  const showRevealedOptions=revealed&&q?.kind==='choice'&&options.some((o:any)=>o.imageVisibility==='reveal'&&optionImages(o).length>0);
  const answerImages=[...(q?.answerImage?[{id:'main',text:'',image:q.answerImage}]:[]),...(q?.answerGallery||[]).filter((i:any)=>i.image),...(q?.kind==='scene'&&revealed&&!q.answerImage&&!q.answerGallery?.length?[{id:'scene',text:'',image:config.image}]:[]),...(q?.kind==='choice'&&revealed&&!showRevealedOptions&&!q.answerImage&&!q.answerGallery?.length?options.filter((o:any)=>state.choices[o.id]==='right').flatMap((o:any)=>optionImages(o).map((image:string,i:number)=>({id:o.id+'-'+i,text:'',image}))):[]),...(q?.kind==='matching'&&revealed?(config.reveals||config.pairs||[]).filter((p:any)=>p.image).map((p:any)=>({id:'pair-'+p.left,text:p.left+' → '+p.right,image:p.image})):[])];
- return <div ref={box} className="stage-frame" style={{height:width*672/3904}}><div className={'stage-canvas '+(revealed?'is-revealed':'')} style={{transform:`scale(${width/3904})`}}>
+ return <div ref={box} className={'stage-frame '+layoutClass} style={{aspectRatio:`${w} / ${h}`,'--stage-ratio':String(ratio)} as CSSProperties}><div className={'stage-canvas '+layoutClass+(revealed?' is-revealed':'')} style={{width:`${w}px`,height:`${h}px`,transform:`scale(${width/w})`,'--stage-w':`${w}px`,'--stage-h':`${h}px`} as CSSProperties}>
   <img className="stage-logo" src={stageLogo} alt="" aria-hidden="true"/>
   {state.phase==='waiting'||!item?<div className="stage-welcome"><h1>{packet.title}</h1></div>:item.type==='card'?<div className={'stage-card '+(!item.body.trim()&&!item.image?'stage-title-card':Object.values(kindNames).includes(item.title)&&item.body&&!item.image?'stage-instruction-card':'')}><div><h1>{item.title}</h1>{item.body&&<p>{item.body}</p>}</div>{item.image&&<img src={mediaUrl(item.image)}/>}</div>:<>
    <main className="stage-main"><section className="stage-question"><div className="stage-kicker"><span>{kindNames[q.kind as Kind]}</span>{q.author&&<span className="stage-author">出题人：{q.author}</span>}</div><h1>{q.title}</h1><p>{q.prompt}</p>

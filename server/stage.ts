@@ -1,5 +1,5 @@
 import {normalizeQuestionText} from '../shared/question-text.ts';
-import {freshState,isPlayable,nextPlayableIndex,maxStep,maxAnswerStep,type ShowItem,type StageState,type Command,type StagePacket,type Show} from '../shared/model.ts';
+import {freshState,isPlayable,nextPlayableIndex,maxStep,maxAnswerStep,stageSizeOf,type ShowItem,type StageState,type Command,type StagePacket,type Show} from '../shared/model.ts';
 
 export function advance(input:StageState,items:ShowItem[],c:Command):StageState {
  let s=structuredClone(input);const item=items[s.index];const blocked=item?.type==='question'&&item.blocked;const q=item?.type==='question'?item.question:undefined;
@@ -35,6 +35,7 @@ export function advance(input:StageState,items:ShowItem[],c:Command):StageState 
 }
 
 export function publicPacket(show:Show,preview=false):StagePacket {
+ const {width,height}=stageSizeOf(show);
  let state=structuredClone(show.state);const entry=show.items[state.index];
  if(entry?.type==='question'&&entry.blocked){const {volume,muted,generation}=state.media;state=freshState(state.index);state.media={...state.media,volume,muted,generation:generation+1};}
  let item:any=null;
@@ -60,5 +61,5 @@ export function publicPacket(show:Show,preview=false):StagePacket {
    item={type:'question',id:q.id,question:{kind:q.kind,title:q.title,prompt:q.prompt,author:q.author||q.source?.match(/· 出题：(.+)$/)?.[1],config,...(revealed?{answer:q.answer,explanation:q.explanation,answerImage:q.answerImage,answerGallery:q.answerGallery?.filter(i=>i.group<=(state.answerStep||1))}:{} )}};
   }
  }
- return {id:show.id,title:show.title,version:show.version,state,item};
+ return {id:show.id,title:show.title,version:show.version,width,height,state,item};
 }

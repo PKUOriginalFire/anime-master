@@ -1,0 +1,10 @@
+.stage-size-fields{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:11px;color:#7c8797}
+.stage-size-label{font-weight:600;color:#616776}
+.stage-size-inputs{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.stage-size-inputs label{display:flex;align-items:center;gap:6px;color:#8a93a1}
+.stage-size-inputs input{width:86px;min-width:0;padding:9px 10px}
+.stage-size-presets{display:flex;flex-wrap:wrap;gap:2px 6px}
+.stage-size-presets .is-active{color:var(--coral);font-weight:600}
+.stage-size-presets .text-button{font-size:10px;padding:4px 3px}
+.stage-size-fields>small{font-size:10px;line-height:1.6;color:#979eaa}
+@media(max-width:680px){.stage-size-inputs label{flex:1}.stage-size-inputs input{width:100%}}

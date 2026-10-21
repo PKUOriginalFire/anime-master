@@ -10,7 +10,7 @@ type MediaReference = {kind:string;title:string;status?:string;versions?:number[
 type MediaFile = {id:string;filename:string;owner:string;mime:string;size:number;missing:boolean;metadata:any;references:MediaReference[]};
 type Storage = {files:MediaFile[];totalBytes:number;physicalBytes:number;diskFree:number;unusedCount:number};
 const bytes = (n:number) => n>=1024**3?(n/1024**3).toFixed(2)+' GB':n>=1024**2?(n/1024**2).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
-const auditNames:Record<string,string> = {'trash.empty':'清空回收站','history.clear':'清理题目历史','library.initialized':'初始化题库','user.rename':'用户改名','user.password.reset':'重置用户密码','user.delete':'删除账号','user.permissions.update':'修改用户权限','activity.reset':'新建活动并清空题库','media.delete':'清理素材','questions.export':'导出全部题目','show.delete':'删除活动','show.title.update':'修改活动名称','show.question.update':'同步编辑节目单题目'};
+const auditNames:Record<string,string> = {'trash.empty':'清空回收站','history.clear':'清理题目历史','library.initialized':'初始化题库','user.rename':'用户改名','user.password.reset':'重置用户密码','user.delete':'删除账号','user.permissions.update':'修改用户权限','activity.reset':'新建活动并清空题库','media.delete':'清理素材','questions.export':'导出全部题目','show.delete':'删除活动','show.title.update':'修改活动名称','show.settings.update':'修改活动设置','show.question.update':'同步编辑节目单题目'};
 
 const referenceLabel = (ref:MediaReference) => ref.kind==='show'?'活动节目单':ref.kind==='history'?(ref.status==='deleted'?'回收站历史':ref.status==='missing'?'已移除题目历史':'历史版本'):ref.status==='deleted'?'回收站题目':'有效题目';
 

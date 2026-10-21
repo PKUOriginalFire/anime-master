@@ -6,7 +6,7 @@ import {Stage} from '../src/Stage.tsx';
 import {advance,publicPacket} from '../server/stage.ts';
 import {freshState,newQuestion,type Show} from '../shared/model.ts';
 
-const showFor=(question:any):Show=>({id:'stage-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',items:[{id:'item',type:'question',question}],state:{...freshState(),phase:'question'}});
+const showFor=(question:any):Show=>({id:'stage-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',width:3904,height:672,items:[{id:'item',type:'question',question}],state:{...freshState(),phase:'question'}});
 const command=(action:'reveal'|'settle')=>({id:'command',version:1,action});
 
 test('揭晓和原结算命令合并为同一状态，选择题保留选项并标出正确项',()=>{

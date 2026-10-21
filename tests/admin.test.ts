@@ -52,7 +52,7 @@ test('活动管理创建独立活动并保留题库，旧清库请求不再执�
   try {
     const examples=(await c.request('GET','/api/questions')).json();
     const oldShow=(await c.request('POST','/api/shows',{title:'旧活动'})).json();
-    await c.request('POST','/api/questions',{...newQuestion('acting'),title:'私有草稿'});
+    await c.request('POST','/api/questions',{...newQuestion('acting'),title:'私有草稿',activityId:oldShow.id});
     const before=c.store.all('SELECT id,status,version,data FROM questions ORDER BY id');
     const result=await c.request('POST','/api/shows',{title:'新活动'});
     assert.equal(result.statusCode,200);assert.equal(result.json().title,'新活动');assert.equal(result.json().items.length,1);

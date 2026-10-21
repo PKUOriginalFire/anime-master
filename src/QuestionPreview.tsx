@@ -1,26 +1,26 @@
 import {createUuid} from '../shared/uuid';
 import {useCallback,useRef,useState} from 'react';
 import {advance,publicPacket} from '../server/stage';
-import {freshState,kindNames,maxStep,maxAnswerStep,type Command,type Question,type QuestionRow,type Show,type StageState,type User} from '../shared/model';
+import {freshState,kindNames,maxStep,maxAnswerStep,stageSizeOf,type Command,type Question,type QuestionRow,type Show,type StageSize,type StageState,type User} from '../shared/model';
 import {Stage,type Telemetry} from './Stage';
 import './question-preview.css';
 
-type PreviewProps={question:Question|QuestionRow;user?:User};
+type PreviewProps={question:Question|QuestionRow;user?:User;stageSize?:StageSize};
 type Session={state:StageState;history:StageState[];version:number};
 const phaseNames:Record<StageState['phase'],string>={waiting:'候场',question:'题目',answer:'答案与结算',settlement:'答案与结算',full:'完整场景'};
 
-export function QuestionPreview({question,user}:PreviewProps){
+export function QuestionPreview({question,user,stageSize}:PreviewProps){
  // 草稿内容改变时创建全新的模拟，停止旧媒体并清空操作记录。
- return <PreviewSession key={JSON.stringify(question)} question={question} user={user}/>;
+ return <PreviewSession key={JSON.stringify(question)} question={question} user={user} stageSize={stageSize}/>;
 }
 
-function PreviewSession({question,user}:PreviewProps){
+function PreviewSession({question,user,stageSize}:PreviewProps){
  const row={id:'local-preview',authorId:user?.id||'preview',author:user?.username||'',status:'draft',version:0,updatedAt:'',...question} as QuestionRow;
  const items:Show['items']=[{type:'question',id:'local-preview-item',question:row}];
  const initial=()=>{const state=advance(freshState(),items,{id:createUuid(),version:0,action:'reset'});state.media.muted=true;return {state,history:[],version:0};};
  const [session,setSession]=useState<Session>(initial);const [expanded,setExpanded]=useState(false);const [left,setLeft]=useState('');const [right,setRight]=useState('');const [seek,setSeek]=useState('0');const [position,setPosition]=useState(session.state.media.position);const positionRef=useRef(position);const playRequestedAt=useRef(0);const [telemetry,setTelemetry]=useState<Telemetry>();const [error,setError]=useState('');
  const state=session.state;const revealed=state.phase==='answer'||state.phase==='settlement';const waiting=state.phase==='waiting';const isMedia=row.kind==='music'||row.kind==='dialogue';const steps=maxStep(row);const answerSteps=maxAnswerStep(row);const mediaStart=row.kind==='dialogue'&&revealed?row.config.answerStart:isMedia&&'start'in row.config?row.config.start:0;
- const show:Show={id:'local-preview',ownerId:row.authorId,title:'题目播放预览',items,state,version:session.version};
+ const size=stageSizeOf(stageSize);const show:Show={id:'local-preview',ownerId:row.authorId,title:'题目播放预览',items,state,version:session.version,width:size.width,height:size.height};
  const changePosition=(value:number)=>{positionRef.current=value;setPosition(value);};
  const reportMedia=useCallback((value:Telemetry)=>{
   setTelemetry(value);positionRef.current=value.position;setPosition(value.position);
@@ -52,7 +52,7 @@ function PreviewSession({question,user}:PreviewProps){
   });
  };
  return <section className={'question-preview '+(expanded?'is-expanded':'')} aria-label="单题播放模拟">
-  <div className="question-preview-heading"><div><h3>完整播放预览</h3><span>{kindNames[row.kind]} · 3904 × 672 · {phaseNames[state.phase]}</span></div><button type="button" className="text-button" onClick={()=>setExpanded(!expanded)}>{expanded?'收起预览':'放大预览与控制'}</button></div>
+  <div className="question-preview-heading"><div><h3>完整播放预览</h3><span>{kindNames[row.kind]} · {size.width} × {size.height} · {phaseNames[state.phase]}</span></div><button type="button" className="text-button" onClick={()=>setExpanded(!expanded)}>{expanded?'收起预览':'放大预览与控制'}</button></div>
   <div className="question-preview-stage"><Stage packet={publicPacket(show,true)} preview allowPreviewAudio onPosition={changePosition} onTelemetry={reportMedia}/></div>
   <p className="question-preview-hint">模拟操作只影响此处，未保存的内容也可播放；修改题目会重置预览。{isMedia&&' 默认静音，可开启声音试听。'}</p>
   <div className="question-preview-controls">

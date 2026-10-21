@@ -46,7 +46,7 @@ test('已揭晓或旧撤销状态中的停用题在 OBS 与主持预览均不泄
  for(const phase of ['question','answer','settlement','full'] as const)for(const preview of [false,true]){
   const current={...state(1),phase,step:12,answerStep:8,choices:{A:'right' as const},matches:[{left:'A',right:'B',correct:true}]};
   current.media.playing=true;current.media.position=45;
-  const show:Show={id:'show',title:'活动',version:2,ownerId:'owner',items:list,state:current};
+  const show:Show={id:'show',title:'活动',version:2,ownerId:'owner',width:3904,height:672,items:list,state:current};
   const packet=publicPacket(show,preview);
   assert.equal(packet.item,null);assert.equal(packet.state.phase,'waiting');assert.equal(packet.state.media.playing,false);
   assert.deepEqual(packet.state.choices,{});assert.deepEqual(packet.state.matches,[]);
@@ -57,7 +57,7 @@ test('已揭晓或旧撤销状态中的停用题在 OBS 与主持预览均不泄
 });
 
 test('可播题的延迟图片和出题人仍按原逻辑投影',()=>{
- const list=[question('visible')];const show:Show={id:'show',title:'活动',version:1,ownerId:'owner',items:list,state:state()};
+ const list=[question('visible')];const show:Show={id:'show',title:'活动',version:1,ownerId:'owner',width:3904,height:672,items:list,state:state()};
  assert.equal(publicPacket(show).item.question.author,'author');
  assert.equal(publicPacket(show).item.question.config.options[0].images,undefined);
  const revealed=publicPacket({...show,state:advance(show.state,list,command('reveal'))});

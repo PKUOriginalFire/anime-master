@@ -1,7 +1,7 @@
 import {randomUUID,randomBytes} from 'node:crypto';
 import {copyFileSync,existsSync,readFileSync,statSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {assetIds,freshState,questionSchema,validateReady,type ShowItem} from '../shared/model.ts';
+import {assetIds,DEFAULT_STAGE_HEIGHT,DEFAULT_STAGE_WIDTH,freshState,questionSchema,validateReady,type ShowItem} from '../shared/model.ts';
 import type {Store} from './store.ts';
 
 /** 仅首次初始化空题库，清空回收站后重启也不会重新导入。 */
@@ -26,19 +26,21 @@ export async function seedLibrary(store:Store,adminId:string,profile:'examples'|
  }
  // 文件复制发生在数据事务之前，失败不会产生指向缺失文件的记录。
  for(const m of seed.media)copyFileSync(resolve('seed/media',m.filename),join(store.dir,'media',m.filename));
+ const seededShowId=profile==='full'?randomUUID():undefined;
  store.transaction(()=>{
   for(const [username,account]of authors)if(account.password)store.run('INSERT INTO users(id,username,password) VALUES(?,?,?)',account.id,username,account.password);
   for(const m of seed.media)store.run('INSERT OR IGNORE INTO media VALUES(?,?,?,?,?,?)',m.id,adminId,m.filename,m.mime,statSync(join(store.dir,'media',m.filename)).size,JSON.stringify(m.metadata||{}));
   const ids=new Map<string,string>();
   for(const {raw,question}of questions){
    const id=randomUUID();ids.set(raw.key,id);const owner=profile==='full'?authors.get(raw.authors[0])!.id:adminId;
-   store.run('INSERT INTO questions VALUES(?,?,?,?,?,?)',id,owner,'accepted',1,JSON.stringify(question),new Date().toISOString());
+   const stored=seededShowId?{...question,activityId:seededShowId}:question;
+   store.run('INSERT INTO questions VALUES(?,?,?,?,?,?)',id,owner,'accepted',1,JSON.stringify(stored),new Date().toISOString());
    store.revision(store.question(id)!,adminId,profile==='full'?'完整原稿迁移 · '+raw.pages.join('、')+' 页':'原 PPT 示例迁移');
   }
   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),adminId,'library.initialized',JSON.stringify({profile,questions:questions.length}),new Date().toISOString());
   if(profile==='full'){
    const items:ShowItem[]=seed.rundown.map((entry:any)=>entry.type==='card'?{...entry,id:randomUUID()}:{type:'question',id:randomUUID(),question:store.question(ids.get(entry.questionKey)!)!});
-   store.run('INSERT INTO shows VALUES(?,?,?,?,?,?,?,?)',randomUUID(),adminId,seed.title,0,JSON.stringify(items),JSON.stringify(freshState()),'[]',randomBytes(32).toString('hex'));
+   store.run('INSERT INTO shows(id,owner_id,title,version,items,state,history,display_key,width,height) VALUES(?,?,?,?,?,?,?,?,?,?)',seededShowId,adminId,seed.title,0,JSON.stringify(items),JSON.stringify(freshState()),'[]',randomBytes(32).toString('hex'),DEFAULT_STAGE_WIDTH,DEFAULT_STAGE_HEIGHT);
    store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),adminId,'import_full_deck',JSON.stringify({source:seed.source,sha256:seed.sourceSha256,pages:seed.sourcePages,questions:questions.length,authors:[...authors.keys()]}),new Date().toISOString());
   }
  });
