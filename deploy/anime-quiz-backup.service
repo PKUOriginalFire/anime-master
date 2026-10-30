@@ -1,0 +1,13 @@
+[Unit]
+Description=Anime Master WebDAV 备份
+Wants=network-online.target
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/anime-quiz-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=1800

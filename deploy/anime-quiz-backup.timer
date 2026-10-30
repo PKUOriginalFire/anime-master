@@ -1,0 +1,11 @@
+[Unit]
+Description=每日 WebDAV 备份 Anime Master 数据
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=20m
+Unit=anime-quiz-backup.service
+
+[Install]
+WantedBy=timers.target

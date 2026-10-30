@@ -71,12 +71,28 @@
 .stage-answer-overlay.has-image p{font-size:calc(36 * var(--tu));max-height:calc(200 * var(--tu))}
 .stage-answer-overlay>img{width:auto;height:100%;max-width:58%;min-width:0;flex:0 1 auto;object-fit:contain;object-position:left center;border-radius:calc(12 * var(--tu))}
 .stage-matching{height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;min-height:0}
-.match-row{display:flex;gap:calc(16 * var(--tu));height:calc(50% - 38 * var(--tu));min-height:0;flex:1}.match-row.bottom:not(:has(img)){height:calc(74 * var(--tu));flex:0 0 calc(74 * var(--tu))}
-.match-row>div{flex:1;min-width:0;background:rgba(255,255,255,.8);border:calc(2 * var(--tu)) solid #e7dfd0;border-radius:calc(12 * var(--tu));overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+.match-row{display:flex;gap:calc(14 * var(--tu));min-height:0;flex:1}.match-row.bottom:not(:has(img)){height:calc(74 * var(--tu));flex:0 0 calc(74 * var(--tu))}
+.match-row>div{flex:1;min-width:0;background:rgba(255,255,255,.8);border:calc(2 * var(--tu)) solid #e7dfd0;border-radius:calc(12 * var(--tu));overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:calc(4 * var(--tu))}
+.match-row p{font-size:calc(28 * var(--tu));line-height:1.35;text-align:center;margin:0;padding:calc(4 * var(--tu)) calc(6 * var(--tu));white-space:normal;overflow-wrap:anywhere;max-height:calc(84 * var(--tu));overflow:hidden;flex-shrink:0}
+.match-row b{display:inline-grid;place-items:center;min-width:calc(38 * var(--tu));height:calc(38 * var(--tu));padding:0 calc(6 * var(--tu));border-radius:calc(19 * var(--tu));background:#ece4d5;color:#a69376;font-size:calc(26 * var(--tu));line-height:1;margin-right:calc(6 * var(--tu));vertical-align:middle}
 .match-row img{height:calc(210 * var(--tu));min-height:0;width:100%;object-fit:contain;flex:1}
-.match-row p{font-size:calc(28 * var(--tu));line-height:1.4;text-align:center;margin:0;padding:calc(8 * var(--tu)) calc(6 * var(--tu));white-space:normal;overflow-wrap:anywhere;max-height:calc(90 * var(--tu));overflow:hidden;flex-shrink:0}
-.match-row b{color:#b18e69}
 .stage-matching>svg{height:calc(76 * var(--tu));width:100%;overflow:visible;flex-shrink:0}
+/* 16:9 等非超宽画布：题目置顶，连线板占满整行宽度；选项文字顶部对齐并随画布缩小。 */
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching){flex-direction:column;gap:calc(12 * var(--tu));padding:calc(24 * var(--tu)) calc(32 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-question{width:100%;height:auto;flex:0 0 auto;justify-content:flex-start;padding:0;overflow:hidden}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-kicker{position:static;margin-bottom:calc(6 * var(--tu));font-size:calc(22 * var(--tu));gap:calc(16 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-author{font-size:calc(20 * var(--tu));max-height:none;text-align:left}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-question h1{font-size:min(calc(var(--stage-h) * .046),calc(var(--stage-w) * .03));line-height:1.25;max-height:calc(var(--stage-h) * .11);margin-bottom:calc(6 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-question>p{font-size:min(calc(var(--stage-h) * .034),calc(var(--stage-w) * .022));line-height:1.4;max-height:calc(var(--stage-h) * .12)}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-main:has(.stage-content.kind-matching) .stage-content{width:100%;height:auto;flex:1;min-height:0;align-items:stretch}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-matching{gap:calc(4 * var(--tu));justify-content:center}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row{flex:0 1 auto;height:auto;max-height:none;gap:calc(12 * var(--tu));align-items:stretch}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row>div{justify-content:flex-start;padding:calc(4 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row p{font-size:clamp(calc(14 * var(--tu)),calc(var(--stage-w) * .014),calc(26 * var(--tu)));line-height:1.28;text-align:left;max-height:calc(var(--stage-h) * .12);padding:calc(4 * var(--tu)) calc(6 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row b{min-width:1.6em;height:1.6em;padding:0 .35em;border-radius:1.6em;font-size:.85em;margin-right:.3em;vertical-align:top}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row img{flex:0 0 auto;height:auto;max-height:calc(var(--stage-h) * .42);min-height:0;object-fit:contain;object-position:center top;margin:calc(2 * var(--tu)) auto 0}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .match-row.bottom:not(:has(img)){height:calc(58 * var(--tu));flex:0 0 calc(58 * var(--tu))}
+:is(.layout-wide,.layout-split,.layout-stack:not(.is-tall)) .stage-matching>svg{height:calc(48 * var(--tu));flex:0 0 calc(48 * var(--tu))}
 .acting-stage{width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.35);border-radius:calc(16 * var(--tu));color:#9a927c;overflow:hidden}
 .acting-stage p{font-size:calc(64 * var(--tu));line-height:1.5;white-space:pre-wrap;text-align:center;margin:calc(32 * var(--tu));max-height:calc(540 * var(--tu));overflow:hidden}
 .acting-stage img{height:100%;width:100%;object-fit:contain}

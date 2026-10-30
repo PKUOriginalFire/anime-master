@@ -4,7 +4,7 @@
 
 React / TypeScript / Fastify / Socket.IO / SQLite。Node.js 24+，上传检查需要 FFmpeg（`ffprobe`）。
 
-> 本公开仓库只包含源码、测试和通用配置，不包含真实活动题库、参与者信息、媒体素材、展示凭证或部署配置。完整数据和运维材料应在独立私有环境中维护。
+> 本公开仓库包含源码、测试、Compose、通用部署脚本和恢复工具，不包含真实活动题库、参与者信息、媒体素材、`.env`、备份凭证或证书。完整数据与凭证必须单独保存，冷启动步骤见 [RECOVERY.md](RECOVERY.md)。
 
 ## 功能
 
@@ -97,11 +97,27 @@ npm run build
 
 更新前先备份 SQLite 数据库与媒体目录，保留上一发布版本和对应配置。数据库恢复、素材批量删除、旧版本清理和回滚都应单独确认；不要把生产凭证、Cookie 或展示密钥粘贴到公开日志。
 
-部署脚本、反向代理配置、证书和运维文档按环境单独维护，不进入公开仓库。
+仓库提供公开的 `compose.yaml`、通用备份/恢复脚本和 `nginx.conf.example`；主机专用的 `.env`、证书、DNS 凭证和真实数据仍按环境单独维护。完整冷启动与恢复步骤见 [RECOVERY.md](RECOVERY.md)。
+
+### WebDAV 定期备份
+
+`scripts/webdav-backup.mjs` 生成 SQLite 一致性快照与 `media.tgz`，上传到 WebDAV，并按保留数清理旧快照。备份包含完整题库、账号数据和媒体，请确保远端目录访问受控。
+
+凭证只放在仓库外的 env 文件（权限 600），变量格式见 `backup.env.example`：`WEBDAV_URL`、`WEBDAV_USERNAME`、`WEBDAV_PASSWORD`、`WEBDAV_PATH` 为必填；`WEBDAV_BACKUP_KEEP`、`WEBDAV_INSECURE_TLS`、`WEBDAV_BACKUP_LABEL`、`WEBDAV_TIMEOUT_MS` 可选。不要把真实 URL、账号或密码写进源码、README、Compose 或 Git。
+
+手工执行示例（把镜像、数据目录和凭证路径替换为实际值）：
+
+```bash
+docker run --rm --init --user 1000:1000 --read-only --tmpfs /tmp:size=64m \
+  --env-file /path/outside/repo/backup.env -e DATA_DIR=/data \
+  -v /path/to/data:/data:Z IMAGE node scripts/webdav-backup.mjs
+```
+
+生产环境由 systemd timer 每日执行一次，单元文件位于 `deploy/`。自签名证书可临时设置 `WEBDAV_INSECURE_TLS=1`，更推荐使用受信任证书。恢复使用 `deploy/restore-webdav.sh`：停止应用后下载最新快照、校验 sha256，并把当前数据移到 `data/backups/pre-restore-*` 再覆盖。完整流程见 [RECOVERY.md](RECOVERY.md)。
 
 ## 公开仓库范围
 
-本仓库不包含真实活动题库与媒体、参与者署名、完整原稿迁移脚本、生产 Compose、反向代理/证书配置以及部署和验收记录。需要完整数据时，请在独立私有环境中维护 `seed/` 和部署材料。
+本仓库不包含真实活动题库与媒体、参与者署名、完整原稿迁移脚本、`.env`、备份/DNS 凭证、TLS 私钥和主机验收记录。公开部分包括源码、`compose.yaml`、通用备份/恢复脚本和反向代理模板；真实数据通过 WebDAV 快照恢复，详见 [RECOVERY.md](RECOVERY.md)。
 
 ## 当前边界
 

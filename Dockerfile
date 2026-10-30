@@ -24,6 +24,8 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node seed ./seed
 COPY --chown=node:node scripts/backup.mjs ./scripts/backup.mjs
+COPY --chown=node:node scripts/webdav-backup.mjs ./scripts/webdav-backup.mjs
+COPY --chown=node:node scripts/webdav-restore.mjs ./scripts/webdav-restore.mjs
 USER node
 EXPOSE 3010
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3010/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

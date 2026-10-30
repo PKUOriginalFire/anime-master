@@ -58,6 +58,19 @@ export function newQuestion(kind:Kind):Question {
  return {...common,kind,config:configs[kind]} as Question;
 }
 export function optionImages(option:{image?:string;images?:string[]}):string[] {return [...new Set((option.images??(option.image?[option.image]:[])).filter(id=>id.trim()))];}
+// 连线题编号只用于展示：保留已有简短编号，随机 ID 按顺序补齐。
+export function matchingItemLabels(items:{id:string}[],side:'left'|'right'):string[] {
+ const short=/^(?:[A-Z]|[1-9])$/;const preserved=items.map(item=>short.test(item.id)?item.id:'');
+ const used=new Set(preserved.filter(Boolean));
+ const letters=preserved.some(label=>/^[A-Z]$/.test(label))||(!preserved.some(label=>/^[1-9]$/.test(label))&&side==='left');
+ const sequence=(letter:boolean)=>Array.from({length:8},(_,n)=>letter?String.fromCharCode(65+n):String(n+1));
+ const candidates=[...sequence(letters),...sequence(!letters)];let cursor=0;
+ return items.map((item,index)=>{
+  if(preserved[index])return preserved[index];
+  while(cursor<candidates.length&&used.has(candidates[cursor]))cursor++;
+  const label=candidates[cursor++]??String(index+1);used.add(label);return label;
+ });
+}
 export function maxStep(q:Question):number {return q.kind==='scene'?Math.max(0,...q.config.regions.map(r=>r.group)):q.kind==='reasoning'?q.config.clues.length:0;}
 export function maxAnswerStep(q:Question):number {return Math.max(1,...(q.answerGallery||[]).map(i=>i.group));}
 export function validateReady(q:Question):string[] {

@@ -3,6 +3,12 @@ dist/
 runtime/
 .env*
 !.env.example
+backup.env
+*conversation*.txt
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backups/
 .local/
 test-results/
 playwright-report/
@@ -14,10 +20,15 @@ __pycache__/
 .DS_Store
 *.log
 
-# 公开仓库排除：部署与运维私有信息
+# 公开仓库排除：本机部署与运维私有信息
 /AGENTS.md
-/deploy/
-/compose.yaml
+/deploy/*
+!/deploy/README.md
+!/deploy/backup-webdav.sh
+!/deploy/anime-quiz-backup.service
+!/deploy/anime-quiz-backup.timer
+!/deploy/restore-webdav.sh
+!/deploy/nginx.conf.example
 /compose.dev.yaml
 /docs/DEPLOYED.md
 /docs/REMOTE-DEVELOPMENT.md

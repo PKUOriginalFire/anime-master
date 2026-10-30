@@ -11,7 +11,7 @@ import {io as client,type Socket} from 'socket.io-client';
 import {buildApp} from '../server/app.ts';
 import {Store} from '../server/store.ts';
 import {publicPacket} from '../server/stage.ts';
-import {newQuestion,type Show} from '../shared/model.ts';
+import {freshState,matchingItemLabels,newQuestion,type Show} from '../shared/model.ts';
 import {Stage} from '../src/Stage.tsx';
 
 const password='ActivitySettings-12345';
@@ -110,4 +110,20 @@ test('修改分辨率后展示端立即收到新尺寸',async()=>{
   assert.deepEqual({width:packet.width,height:packet.height},{width:2560,height:1080});
   assert.equal(packet.state.phase,show.state.phase);
  }finally{for(const socket of sockets)socket.disconnect();await c.cleanup();}
+});
+
+test('连线题保留有效编号并把随机 ID 顺延，文字位于图片上方',()=>{
+ assert.deepEqual(matchingItemLabels([{id:'1'},{id:'2'},{id:'x1'}],'left'),['1','2','3']);
+ assert.deepEqual(matchingItemLabels([{id:'A'},{id:'B'},{id:'x1'}],'right'),['A','B','C']);
+ const question:any={...newQuestion('matching'),title:'连线测试',prompt:'请连线',answer:'',config:{
+  left:[{id:'A',text:'左一',image:'left-1'},{id:'B',text:'左二',image:'left-2'},{id:'772bfa',text:'左三',image:'left-3'}],
+  right:[{id:'1',text:'右一',image:''},{id:'2',text:'右二',image:''},{id:'b2c311',text:'右三',image:''}],
+  pairs:[{left:'A',right:'1'},{left:'B',right:'2'},{left:'772bfa',right:'b2c311'}]
+ }};
+ const show:Show={id:'matching-show',ownerId:'owner',title:'连线活动',version:0,items:[{type:'question',id:'item',question:{...question,id:'q',authorId:'owner',author:'出题人',status:'accepted',version:0,updatedAt:''}}],state:{...freshState(),phase:'question'},width:1920,height:1080};
+ const html=renderToStaticMarkup(createElement(Stage,{packet:publicPacket(show)}));
+ for(const label of ['A','B','C','1','2','3'])assert.ok(html.includes(`<b>${label}</b>`),`缺少编号 ${label}`);
+ assert.ok(!html.includes('772bfa'));assert.ok(!html.includes('b2c311'));
+ const textAt=html.indexOf('<p><b>A</b> 左一</p>'),imageAt=html.indexOf('src="/api/media/left-1"');
+ assert.ok(textAt>=0&&imageAt>textAt,'连线题文字应位于图片上方');
 });

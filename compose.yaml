@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      target: production
+    image: anime-quiz:${RELEASE_TAG:-local}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${APP_PORT:-3010}:3010"
+    env_file: .env
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3010}
+      APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
+    volumes:
+      - ${DATA_DIR_HOST:-/opt/anime-quiz/data}:/data:Z
+    mem_limit: 768m
+    cpus: 1.5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

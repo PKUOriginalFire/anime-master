@@ -1,4 +1,4 @@
-import type {Question,ShowItem} from './model.ts';
+import {matchingItemLabels,type Question,type ShowItem} from './model.ts';
 
 function withoutRepeatedLabel(text:string,label:string):string {
  const escaped=label.replace(/[.*+?^\${}()|[\]\\]/g,'\\$&');
@@ -12,7 +12,7 @@ export function normalizeQuestionText<T extends Question>(question:T):T {
  const prompt=titleNumber?withoutRepeatedLabel(withoutRepeatedLabel(question.prompt,'Q'+titleNumber),titleNumber):question.prompt;
  if(question.kind==='choice')return {...question,prompt,config:{...question.config,options:question.config.options.map(item=>({...item,text:withoutRepeatedLabel(item.text,item.id)}))}} as T;
  if(question.kind==='reasoning')return {...question,prompt,config:{...question.config,clues:question.config.clues.map((item,index)=>({...item,text:withoutRepeatedLabel(item.text,String(index+1))}))}} as T;
- if(question.kind==='matching')return {...question,prompt,config:{...question.config,left:question.config.left.map(item=>({...item,text:withoutRepeatedLabel(item.text,item.id)})),right:question.config.right.map(item=>({...item,text:withoutRepeatedLabel(item.text,item.id)}))}} as T;
+ if(question.kind==='matching'){const left=matchingItemLabels(question.config.left,'left'),right=matchingItemLabels(question.config.right,'right');return {...question,prompt,config:{...question.config,left:question.config.left.map((item,index)=>({...item,text:withoutRepeatedLabel(item.text,left[index])})),right:question.config.right.map((item,index)=>({...item,text:withoutRepeatedLabel(item.text,right[index])}))}} as T;}
  return {...question,prompt};
 }
 
