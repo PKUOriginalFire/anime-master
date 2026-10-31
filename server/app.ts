@@ -18,7 +18,7 @@ import {registerMaintenanceRoutes} from './maintenance.ts';
 import {seedLibrary} from './seed.ts';
 import {registerSceneRoute} from './scene.ts';
 import {advance,publicPacket} from './stage.ts';
-import {questionSchema,commandSchema,assetIds,validateReady,freshState,stageSizeSchema,DEFAULT_STAGE_WIDTH,DEFAULT_STAGE_HEIGHT,type User,type Question,type QuestionRow,type Show,type ShowItem} from '../shared/model.ts';
+import {questionSchema,commandSchema,assetIds,validateReady,freshState,stageSizeSchema,canEditQuestion,isActivityFrozen,DEFAULT_STAGE_WIDTH,DEFAULT_STAGE_HEIGHT,type User,type Question,type QuestionRow,type Show,type ShowItem} from '../shared/model.ts';
 
 const scrypt=promisify(rawScrypt);const exec=promisify(execFile);
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
@@ -34,7 +34,6 @@ const canRead=(u:User,q:QuestionRow)=>{
  if(u.reviewer)return q.status!=='draft'&&q.status!=='deleted';
  return u.host&&q.status==='accepted';
 };
-const canEdit=(u:User,q:QuestionRow)=>u.admin||q.authorId===u.id||(u.reviewer&&q.status!=='draft'&&q.status!=='deleted');
 // 已有导入账号可能含旧版允许的标点，登录保留兼容，注册与改名执行新规则。
 const loginCredentials=z.object({username:usernameInput,password:z.string().min(6).max(128)});
 type Options={dir?:string;logger?:boolean;seed?:boolean;seedProfile?:'examples'|'full';authorInitialPassword?:string;rateLimits?:boolean;adminPassword?:string;adminUsername?:string;origin?:string;allowedOrigins?:string[];clientDir?:string};
@@ -68,18 +67,18 @@ export async function buildApp(options:Options={}){
  const visibleQuestion=(u:User,id:string)=>{const q=getQ(id);if(!canRead(u,q))fail(403,'没有查看权限');return q;};
  const hasActivities=()=>!!store.one('SELECT id FROM shows LIMIT 1');
  // 已有活动时新题必须绑定活动；空实例仍可先写草稿，后续创建活动后再绑定。
- const requireQuestionActivity=(q:Question)=>{if(q.activityId)getShow(q.activityId);else if(hasActivities())fail(400,'请选择题目所属活动');};
+ const requireQuestionActivity=(q:Question)=>{if(q.activityId){const s=getShow(q.activityId);if(isActivityFrozen(s))fail(409,`${s.completedAt?'活动已完成':'活动已锁定'}，不能新增题目`);}else if(hasActivities())fail(400,'请选择题目所属活动');};
  const assertAssets=(u:User,q:unknown,existing?:unknown)=>{const existingIds=new Set(assetIds(existing));for(const id of assetIds(q)){const m=store.one('SELECT * FROM media WHERE id=?',id);if(!m)fail(400,'题目引用了不存在的素材');if(m.owner_id!==u.id&&!u.admin&&!existingIds.has(id)&&!store.all('SELECT id FROM questions').some(r=>{const q=store.question(r.id)!;return (canRead(u,q)||q.status==='accepted')&&assetIds(q).includes(id);}))fail(403,'不能引用私有素材');}};
  const saveRevision=(q:QuestionRow,actor:string,note:string)=>store.revision(q,actor,note);
  const emitPresence=(id:string)=>io.to(id+':host').emit('presence',[...presence.values()].filter(p=>p.showId===id&&Date.now()-p.last<15000));
  function broadcast(id:string){const s=getShow(id);io.to(id+':display').emit('state',publicPacket(s));io.to(id+':host').emit('state',s);io.to(id+':review').emit('state',reviewShow(s));}
  const showsUsingQuestion=(questionId:string)=>store.all('SELECT id FROM shows').map(row=>getShow(row.id)).filter(show=>show.items.some(item=>item.type==='question'&&item.question.id===questionId));
- const syncQuestionShows=(beforeShows:Show[],questionId:string)=>{
+ const syncQuestionShows=(beforeShows:Show[],questionIds:Set<string>)=>{
   for(const before of beforeShows){
    const updated=getShow(before.id);
    let state=before.state;
    const current=before.items[state.index];
-   if(current?.type==='question'&&current.question.id===questionId){
+   if(current?.type==='question'&&questionIds.has(current.question.id)){
     const reset=freshState(state.index);
     state={...reset,media:{...reset.media,volume:state.media.volume,muted:state.media.muted,generation:state.media.generation+1}};
    }
@@ -142,25 +141,49 @@ export async function buildApp(options:Options={}){
  app.post('/api/questions',async req=>{const u=requireUser(req);const q=questionSchema.parse(req.body);requireQuestionActivity(q);assertAssets(u,q);const id=randomUUID();store.transaction(()=>{store.run('INSERT INTO questions VALUES(?,?,?,?,?,?)',id,u.id,'draft',1,JSON.stringify(q),now());saveRevision(store.question(id)!,u.id,'创建草稿');});return getQ(id);});
  app.put<{Params:{id:string}}>('/api/questions/:id',async req=>{
   const u=requireUser(req);const b=z.object({version:z.number().int(),question:questionSchema}).parse(req.body);
-  const q=getQ(req.params.id);if(!canEdit(u,q)||q.status==='deleted')fail(403,'没有编辑权限');
+  const q=getQ(req.params.id);if(!canEditQuestion(u,q)||q.status==='deleted')fail(403,'没有编辑权限');
   if(q.version!==b.version)fail(409,'题目已被其他人更新，请重新打开后再编辑');
-  if(b.question.activityId)getShow(b.question.activityId);
-  else if(q.activityId&&hasActivities())fail(400,'请选择题目所属活动');
+  const activityId=q.activityId||'',nextActivityId=b.question.activityId||'';
+  const target=nextActivityId?getShow(nextActivityId):undefined;
+  if(activityId!==nextActivityId){
+   const origin=activityId?store.show(activityId):undefined;
+   if(isActivityFrozen(origin))fail(409,`${origin?.completedAt?'原活动已完成':'原活动已锁定'}，不能调整题目所属活动`);
+   if(isActivityFrozen(target))fail(409,`${target?.completedAt?'目标活动已完成':'目标活动已锁定'}，不能接收题目`);
+   if(!nextActivityId&&activityId&&hasActivities())fail(400,'请选择题目所属活动');
+  }
   assertAssets(u,b.question);const status=['accepted','to_implement'].includes(q.status)?'pending':q.status;
   let affected:Show[]=[];
   store.transaction(()=>{
    affected=showsUsingQuestion(q.id);
    store.run('UPDATE questions SET data=?,version=version+1,status=?,updated_at=? WHERE id=?',JSON.stringify(b.question),status,now(),q.id);
-   saveRevision(getQ(q.id),u.id,'修改题目');syncQuestionShows(affected,q.id);
+   saveRevision(getQ(q.id),u.id,'修改题目');syncQuestionShows(affected,new Set([q.id]));
   });
   for(const show of affected)broadcast(show.id);
   return getQ(q.id);
+ });
+ app.patch('/api/questions/activity',async req=>{
+  const u=requireUser(req);const b=z.object({questionIds:z.array(z.string().min(1)).min(1),activityId:z.string().min(1).max(64)}).parse(req.body);
+  const ids=[...new Set(b.questionIds)];if(ids.length>500)fail(400,'一次最多调整 500 道题目');
+  const updated:QuestionRow[]=[];
+  store.transaction(()=>{
+   const target=getShow(b.activityId);if(isActivityFrozen(target))fail(409,`${target.completedAt?'目标活动已完成':'目标活动已锁定'}，不能接收题目`);
+   for(const id of ids){
+    const q=getQ(id);if(q.status==='deleted'||!canEditQuestion(u,q))fail(403,'没有编辑权限');
+    if((q.activityId||'')===b.activityId)continue;
+    const origin=q.activityId?store.show(q.activityId):undefined;if(isActivityFrozen(origin))fail(409,`${origin?.completedAt?'原活动已完成':'原活动已锁定'}，不能调整题目所属活动`);
+    const raw=store.one('SELECT data FROM questions WHERE id=?',id);
+    store.run('UPDATE questions SET data=?,version=version+1,updated_at=? WHERE id=?',JSON.stringify({...JSON.parse(raw.data),activityId:b.activityId}),now(),id);
+    const current=getQ(id)!;saveRevision(current,u.id,`批量调整所属活动为《${target.title}》`);updated.push(current);
+   }
+  });
+  for(const id of new Set(updated.flatMap(q=>showsUsingQuestion(q.id).map(s=>s.id))))broadcast(id);
+  return {count:updated.length,questions:updated};
  });
  app.post<{Params:{id:string}}>('/api/questions/:id/status',async req=>{
   const u=requireUser(req);const q=getQ(req.params.id);
   const b=z.object({version:z.number().int(),status:z.enum(['pending','to_implement','accepted','needs_changes','deleted','restore']),note:z.string().max(4000).default('')}).parse(req.body);
   if(q.version!==b.version)fail(409,'题目已更新，请重新打开');
-  if(!canEdit(u,q))fail(403,'没有操作权限');
+  if(!canEditQuestion(u,q))fail(403,'没有操作权限');
   if(b.status==='restore'&&!u.admin)fail(403,'仅管理员可恢复删除题目');
   if(b.status!=='restore'&&q.status==='deleted')fail(400,'请先恢复题目');
   if(['accepted','needs_changes','to_implement'].includes(b.status)&&!u.reviewer&&!u.admin)fail(403,'仅审题人可审核');
@@ -173,7 +196,7 @@ export async function buildApp(options:Options={}){
   store.transaction(()=>{
    affected=showsUsingQuestion(q.id);
    store.run('UPDATE questions SET status=?,version=version+1,updated_at=? WHERE id=?',status,now(),q.id);
-   saveRevision(getQ(q.id),u.id,b.note||'变更状态');syncQuestionShows(affected,q.id);
+   saveRevision(getQ(q.id),u.id,b.note||'变更状态');syncQuestionShows(affected,new Set([q.id]));
   });
   for(const show of affected)broadcast(show.id);
   return getQ(q.id);
@@ -202,7 +225,7 @@ export async function buildApp(options:Options={}){
   if(!allowed)fail(403,'没有查看素材的权限');reply.type(m.mime).header('Cache-Control','private, no-store');return reply.sendFile(m.filename);
  });
  app.get('/api/shows',async req=>{const u=requireUser(req);requireShowRead(u);return store.all('SELECT id FROM shows').map(r=>getShow(r.id)).filter(s=>u.admin||u.reviewer||s.ownerId===u.id).map(s=>visibleShow(u,s));});
- app.get('/api/activity-options',async req=>{requireUser(req);return store.all('SELECT id,title,width,height FROM shows ORDER BY title COLLATE NOCASE,id').map((r:any)=>({id:r.id,title:r.title,width:Number(r.width)||DEFAULT_STAGE_WIDTH,height:Number(r.height)||DEFAULT_STAGE_HEIGHT}));});
+ app.get('/api/activity-options',async req=>{requireUser(req);return store.all('SELECT id,title,width,height,locked_at,completed_at FROM shows ORDER BY title COLLATE NOCASE,id').map((r:any)=>({id:r.id,title:r.title,width:Number(r.width)||DEFAULT_STAGE_WIDTH,height:Number(r.height)||DEFAULT_STAGE_HEIGHT,...(r.locked_at?{lockedAt:r.locked_at}:{}),...(r.completed_at?{completedAt:r.completed_at}:{})}));});
  app.post('/api/shows',async req=>{const u=requireUser(req);requireHost(u);const b=z.object({title:z.string().trim().min(1).max(120),width:stageSizeSchema.shape.width.optional(),height:stageSizeSchema.shape.height.optional()}).parse(req.body);const width=b.width??DEFAULT_STAGE_WIDTH,height=b.height??DEFAULT_STAGE_HEIGHT;const id=randomUUID();const items:ShowItem[]=[{id:randomUUID(),type:'card',title:b.title,body:'欢迎来到元火动漫晚会 · 互动环节'}];store.run('INSERT INTO shows(id,owner_id,title,version,items,state,history,display_key,width,height) VALUES(?,?,?,?,?,?,?,?,?,?)',id,u.id,b.title,0,JSON.stringify(items),JSON.stringify(freshState()),'[]',randomBytes(32).toString('hex'),width,height);return getShow(id);});
  app.get<{Params:{id:string}}>('/api/shows/:id',async req=>{const s=getShow(req.params.id);const u=requireUser(req);requireShowRead(u,s);return visibleShow(u,s);});
  app.delete<{Params:{id:string}}>('/api/shows/:id',async req=>{
@@ -210,18 +233,62 @@ export async function buildApp(options:Options={}){
   const body=z.object({version:z.number().int().nonnegative(),confirmation:z.string().min(1).max(120)}).parse(req.body);
   const deleted=store.transaction(()=>{
    const show=getShow(req.params.id);requireHost(u,show);
+   if(show.lockedAt&&!show.completedAt)fail(409,'活动已锁定，请先标记完成后再删除');
    if(show.version!==body.version)fail(409,'活动已更新，请刷新后再删除');
    if(body.confirmation!==show.title)fail(400,'请输入完整活动名称以确认删除');
+   const trashedIds=new Set<string>(),affectedIds=new Set<string>();
+   if(show.completedAt){
+    for(const row of store.all("SELECT id FROM questions WHERE status<>'deleted'")){
+     const q=store.question(row.id);if(q?.activityId!==show.id)continue;
+     store.run("UPDATE questions SET status='deleted',version=version+1,updated_at=? WHERE id=?",now(),q.id);
+     const current=store.question(q.id)!;store.revision(current,u.id,`完成活动《${show.title}》删除后移入回收站`);trashedIds.add(q.id);
+    }
+    if(trashedIds.size){
+     const affected=new Map<string,Show>();
+     for(const id of trashedIds)for(const s of showsUsingQuestion(id))if(s.id!==show.id)affected.set(s.id,s);
+     if(affected.size)syncQuestionShows([...affected.values()],trashedIds);
+     for(const id of affected.keys())affectedIds.add(id);
+    }
+   }
    store.run('DELETE FROM commands WHERE show_id=?',show.id);
    store.run('DELETE FROM shows WHERE id=?',show.id);
-   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),u.id,'show.delete',JSON.stringify({showId:show.id,title:show.title,itemCount:show.items.length}),now());
-   return {id:show.id,title:show.title};
+   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),u.id,'show.delete',JSON.stringify({showId:show.id,title:show.title,itemCount:show.items.length,...(trashedIds.size?{trashedQuestions:trashedIds.size}:{})}),now());
+   return {id:show.id,title:show.title,trashedQuestions:trashedIds.size,affectedIds:[...affectedIds]};
   });
   const rooms=['host','review','display'].map(mode=>deleted.id+':'+mode);
-  for(const room of rooms)io.to(room).emit('activity-deleted',deleted);
+  for(const room of rooms)io.to(room).emit('activity-deleted',{id:deleted.id,title:deleted.title});
   for(const [id,entry]of presence)if(entry.showId===deleted.id)presence.delete(id);
   for(const room of rooms)io.in(room).disconnectSockets(true);
-  return {ok:true};
+  for(const id of deleted.affectedIds)broadcast(id);
+  return {ok:true,trashedQuestions:deleted.trashedQuestions};
+ });
+ app.post<{Params:{id:string}}>('/api/shows/:id/lock',async req=>{
+  const u=requireUser(req);
+  const body=z.object({version:z.number().int().nonnegative()}).parse(req.body);
+  store.transaction(()=>{
+   const show=getShow(req.params.id);requireHost(u,show);
+   if(show.lockedAt||show.completedAt)return;
+   if(show.version!==body.version)fail(409,'活动已更新，请刷新后再锁定');
+   const lockedAt=now();
+   store.run('UPDATE shows SET locked_at=?,version=version+1 WHERE id=?',lockedAt,show.id);
+   const questionCount=store.all("SELECT id FROM questions WHERE status<>'deleted'").map((row:any)=>store.question(row.id)).filter(q=>q?.activityId===show.id).length;
+   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),u.id,'show.lock',JSON.stringify({showId:show.id,title:show.title,questionCount}),now());
+  });
+  broadcast(req.params.id);return visibleShow(u,getShow(req.params.id));
+ });
+ app.post<{Params:{id:string}}>('/api/shows/:id/complete',async req=>{
+  const u=requireUser(req);
+  const body=z.object({version:z.number().int().nonnegative()}).parse(req.body);
+  store.transaction(()=>{
+   const show=getShow(req.params.id);requireHost(u,show);
+   if(show.completedAt)return;
+   if(show.version!==body.version)fail(409,'活动已更新，请刷新后再标记完成');
+   const completedAt=now();
+   store.run('UPDATE shows SET locked_at=COALESCE(locked_at,?),completed_at=?,version=version+1 WHERE id=?',completedAt,completedAt,show.id);
+   const questionCount=store.all("SELECT id FROM questions WHERE status<>'deleted'").map((row:any)=>store.question(row.id)).filter(q=>q?.activityId===show.id).length;
+   store.run('INSERT INTO audit_events VALUES(?,?,?,?,?)',randomUUID(),u.id,'show.complete',JSON.stringify({showId:show.id,title:show.title,questionCount}),now());
+  });
+  broadcast(req.params.id);return visibleShow(u,getShow(req.params.id));
  });
  app.patch<{Params:{id:string}}>('/api/shows/:id/settings',async req=>{
   const u=requireUser(req);

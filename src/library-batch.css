@@ -1,0 +1,23 @@
+/* 题库活动筛选、批量改属与活动锁定标记。 */
+.question-card-wrap{position:relative;display:flex;flex-direction:column;min-width:0}
+.question-card-wrap>.question-card{display:block;width:100%;flex:1}
+.question-card-wrap.has-select{padding-top:30px}
+.question-select{position:absolute;top:0;left:3px;z-index:2;display:inline-flex;align-items:center;gap:7px;padding:3px 5px;border-radius:6px;font-size:10px;color:#8c95a2;cursor:pointer}
+.question-select:hover{background:#fff5ef;color:#6f7987}
+.question-select input{width:15px;height:15px;margin:0;accent-color:var(--coral);cursor:pointer}
+.question-card.is-selected{border-color:#ef9b8c;background:#fffaf7;box-shadow:0 0 0 3px #ef745f1f}
+.question-card.is-selected:hover{box-shadow:0 12px 26px #44516b12,0 0 0 3px #ef745f1f}
+.batch-bar{display:flex;align-items:center;flex-wrap:wrap;gap:14px 20px;margin:0 0 22px;padding:14px 18px;border:1px solid #efe2d7;border-radius:12px;background:#fffaf5;font-size:11px;color:#7d8794}
+.batch-bar label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.batch-bar input[type=checkbox]{width:15px;height:15px;margin:0;accent-color:var(--coral)}
+.batch-bar select{min-width:150px;padding:8px 10px;background:#fff;font-size:10px;color:#68727f}
+.batch-count{font-weight:600;color:#b08a72}
+.batch-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-left:auto}
+.batch-actions .button{min-height:34px;padding:7px 14px;font-size:11px}
+.activity-tag{display:inline-flex;align-items:center;gap:6px;max-width:100%;margin-bottom:8px;padding:3px 8px;border-radius:6px;background:#f4f2ee;font-size:9px;line-height:1.6;color:#8d877d;overflow-wrap:anywhere}
+.activity-tag>b{flex-shrink:0}
+.activity-used{display:inline-block;flex-shrink:0;padding:3px 7px;border:1px solid #f0d8c6;border-radius:5px;background:#fff1e7;font-size:9px;font-weight:600;line-height:1.6;color:#b07756;white-space:nowrap}
+.activity-used.is-completed{border-color:#cfe6d8;background:#eef8f1;color:#4f8a63}
+.activity-card-badges{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+@media(max-width:1100px){.batch-bar{gap:10px 16px}.batch-actions{margin-left:0}}
+@media(max-width:720px){.question-card-wrap.has-select{padding-top:28px}.batch-bar{align-items:flex-start}.batch-target{flex:1 1 100%}.batch-bar select{flex:1;min-width:0}.batch-actions{width:100%;justify-content:flex-end}.activity-tag{font-size:10px}}

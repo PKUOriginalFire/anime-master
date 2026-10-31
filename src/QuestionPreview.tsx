@@ -1,5 +1,5 @@
 import {createUuid} from '../shared/uuid';
-import {useCallback,useRef,useState} from 'react';
+import {memo,useCallback,useEffect,useRef,useState} from 'react';
 import {advance,publicPacket} from '../server/stage';
 import {freshState,kindNames,matchingItemLabels,maxStep,maxAnswerStep,stageSizeOf,type Command,type Question,type QuestionRow,type Show,type StageSize,type StageState,type User} from '../shared/model';
 import {Stage,type Telemetry} from './Stage';
@@ -9,16 +9,23 @@ type PreviewProps={question:Question|QuestionRow;user?:User;stageSize?:StageSize
 type Session={state:StageState;history:StageState[];version:number};
 const phaseNames:Record<StageState['phase'],string>={waiting:'候场',question:'题目',answer:'答案与结算',settlement:'答案与结算',full:'完整场景'};
 
-export function QuestionPreview({question,user,stageSize}:PreviewProps){
- // 草稿内容改变时创建全新的模拟，停止旧媒体并清空操作记录。
- return <PreviewSession key={JSON.stringify(question)} question={question} user={user} stageSize={stageSize}/>;
-}
+export const QuestionPreview=memo(function QuestionPreview({question,user,stageSize}:PreviewProps){
+ return <PreviewSession question={question} user={user} stageSize={stageSize}/>;
+});
 
 function PreviewSession({question,user,stageSize}:PreviewProps){
  const row={id:'local-preview',authorId:user?.id||'preview',author:user?.username||'',status:'draft',version:0,updatedAt:'',...question} as QuestionRow;
  const items:Show['items']=[{type:'question',id:'local-preview-item',question:row}];
  const initial=()=>{const state=advance(freshState(),items,{id:createUuid(),version:0,action:'reset'});state.media.muted=true;return {state,history:[],version:0};};
  const [session,setSession]=useState<Session>(initial);const [expanded,setExpanded]=useState(false);const [left,setLeft]=useState('');const [right,setRight]=useState('');const [seek,setSeek]=useState('0');const [position,setPosition]=useState(session.state.media.position);const positionRef=useRef(position);const playRequestedAt=useRef(0);const [telemetry,setTelemetry]=useState<Telemetry>();const [error,setError]=useState('');
+ const serialized=JSON.stringify(question);const lastSerialized=useRef(serialized);
+ // 题目内容变化时重置播放模拟，但保留放大状态，避免输入时预览反复折叠。
+ useEffect(()=>{
+  if(lastSerialized.current===serialized)return;
+  lastSerialized.current=serialized;
+  setSession(initial());
+  setLeft('');setRight('');setSeek('0');positionRef.current=0;setPosition(0);playRequestedAt.current=0;setTelemetry(undefined);setError('');
+ },[serialized]);
  const state=session.state;const revealed=state.phase==='answer'||state.phase==='settlement';const waiting=state.phase==='waiting';const isMedia=row.kind==='music'||row.kind==='dialogue';const steps=maxStep(row);const answerSteps=maxAnswerStep(row);const mediaStart=row.kind==='dialogue'&&revealed?row.config.answerStart:isMedia&&'start'in row.config?row.config.start:0;
  const size=stageSizeOf(stageSize);const show:Show={id:'local-preview',ownerId:row.authorId,title:'题目播放预览',items,state,version:session.version,width:size.width,height:size.height};
  const matchLeftLabels=row.kind==='matching'?matchingItemLabels(row.config.left,'left'):[];const matchRightLabels=row.kind==='matching'?matchingItemLabels(row.config.right,'right'):[];

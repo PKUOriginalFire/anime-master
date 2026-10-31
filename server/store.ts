@@ -17,7 +17,7 @@ export class Store {
    CREATE TABLE IF NOT EXISTS revisions(id INTEGER PRIMARY KEY,question_id TEXT REFERENCES questions(id),actor_id TEXT REFERENCES users(id),version INTEGER,data TEXT,status TEXT,note TEXT,created_at TEXT);
    CREATE TABLE IF NOT EXISTS comments(id TEXT PRIMARY KEY,question_id TEXT REFERENCES questions(id),user_id TEXT REFERENCES users(id),body TEXT,created_at TEXT);
    CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,owner_id TEXT REFERENCES users(id),filename TEXT,mime TEXT,size INTEGER,metadata TEXT);
-   CREATE TABLE IF NOT EXISTS shows(id TEXT PRIMARY KEY,owner_id TEXT REFERENCES users(id),title TEXT,version INTEGER,items TEXT,state TEXT,history TEXT,display_key TEXT,width INTEGER NOT NULL DEFAULT 3904,height INTEGER NOT NULL DEFAULT 672);
+   CREATE TABLE IF NOT EXISTS shows(id TEXT PRIMARY KEY,owner_id TEXT REFERENCES users(id),title TEXT,version INTEGER,items TEXT,state TEXT,history TEXT,display_key TEXT,width INTEGER NOT NULL DEFAULT 3904,height INTEGER NOT NULL DEFAULT 672,locked_at TEXT,completed_at TEXT);
    CREATE TABLE IF NOT EXISTS commands(show_id TEXT REFERENCES shows(id),id TEXT,PRIMARY KEY(show_id,id));
    CREATE TABLE IF NOT EXISTS audit_events(id TEXT PRIMARY KEY,actor_id TEXT REFERENCES users(id),action TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL);
    CREATE INDEX IF NOT EXISTS question_status ON questions(status);
@@ -27,6 +27,11 @@ export class Store {
   const columns=new Set(this.all('PRAGMA table_info(shows)').map((row:any)=>row.name));
   if(!columns.has('width'))this.db.exec(`ALTER TABLE shows ADD COLUMN width INTEGER NOT NULL DEFAULT ${DEFAULT_STAGE_WIDTH}`);
   if(!columns.has('height'))this.db.exec(`ALTER TABLE shows ADD COLUMN height INTEGER NOT NULL DEFAULT ${DEFAULT_STAGE_HEIGHT}`);
+  if(!columns.has('locked_at')){
+   if(columns.has('used_at'))this.db.exec('ALTER TABLE shows RENAME COLUMN used_at TO locked_at');
+   else this.db.exec('ALTER TABLE shows ADD COLUMN locked_at TEXT');
+  }
+  if(!columns.has('completed_at'))this.db.exec('ALTER TABLE shows ADD COLUMN completed_at TEXT');
  }
  one(sql:string,...p:any[]):any{return this.db.prepare(sql).get(...p);}
  all(sql:string,...p:any[]):any[]{return this.db.prepare(sql).all(...p);}
@@ -50,7 +55,7 @@ export class Store {
    const reset=freshState(state.index);
    state={...reset,media:{...reset.media,volume:state.media.volume,muted:state.media.muted,generation:state.media.generation+1}};
   }
-  return {id:r.id,ownerId:r.owner_id,title:r.title,version:r.version,items,state,displayKey:r.display_key,width:Number(r.width)||DEFAULT_STAGE_WIDTH,height:Number(r.height)||DEFAULT_STAGE_HEIGHT};
+  return {id:r.id,ownerId:r.owner_id,title:r.title,version:r.version,items,state,displayKey:r.display_key,width:Number(r.width)||DEFAULT_STAGE_WIDTH,height:Number(r.height)||DEFAULT_STAGE_HEIGHT,...(r.locked_at?{lockedAt:r.locked_at}:{}),...(r.completed_at?{completedAt:r.completed_at}:{})};
  }
  revision(q:QuestionRow,actor:string,note:string){this.run('INSERT INTO revisions(question_id,actor_id,version,data,status,note,created_at) VALUES(?,?,?,?,?,?,?)',q.id,actor,q.version,JSON.stringify(q),q.status,note,new Date().toISOString());}
  close(){this.db.close();}

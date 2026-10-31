@@ -58,7 +58,7 @@ export function publicPacket(show:Show,preview=false):StagePacket {
     if(revealed){config.video=q.config.answerVideo||q.config.video;config.start=q.config.answerStart;config.poster=q.config.answerPoster;delete config.end;delete config.muteEnd;}
     delete config.answerVideo;delete config.answerStart;delete config.answerPoster;
    }
-   item={type:'question',id:q.id,question:{kind:q.kind,title:q.title,prompt:q.prompt,author:q.author||q.source?.match(/· 出题：(.+)$/)?.[1],config,...(revealed?{answer:q.answer,explanation:q.explanation,answerImage:q.answerImage,answerGallery:q.answerGallery?.filter(i=>i.group<=(state.answerStep||1))}:{} )}};
+   item={type:'question',id:q.id,question:{kind:q.kind,title:q.title,prompt:q.prompt,...(q.promptImages?.length?{promptImages:q.promptImages}:{}),author:q.author||q.source?.match(/· 出题：(.+)$/)?.[1],config,...(revealed?{answer:q.answer,explanation:q.explanation,answerImage:q.answerImage,answerGallery:q.answerGallery?.filter(i=>i.group<=(state.answerStep||1))}:{} )}};
   }
  }
  return {id:show.id,title:show.title,version:show.version,width,height,state,item};

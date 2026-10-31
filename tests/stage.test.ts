@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {Stage} from '../src/Stage.tsx';
 import {advance,publicPacket} from '../server/stage.ts';
-import {freshState,newQuestion,type Show} from '../shared/model.ts';
+import {assetIds,freshState,newQuestion,questionSchema,type Show} from '../shared/model.ts';
 
 const showFor=(question:any):Show=>({id:'stage-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',width:3904,height:672,items:[{id:'item',type:'question',question}],state:{...freshState(),phase:'question'}});
 const command=(action:'reveal'|'settle')=>({id:'command',version:1,action});
@@ -46,4 +47,28 @@ test('合并结算后仍切换台词答案片段并等待主持播放',()=>{
   assert.equal(packet.item.question.config.start,12);
   assert.equal(packet.item.question.config.end,undefined);
  }
+});
+
+test('题干配图随题面公开，选项保留手工换行并计入素材引用',()=>{
+ const q={...newQuestion('choice'),id:'choice-images',title:'配图题',prompt:'看图作答',promptImages:['stem-a','stem-b'],answer:'A',config:{options:[{id:'A',text:'第一行\n第二行'},{id:'B',text:'另一个选项'}],correctId:'A'}};
+ const show=showFor(q);
+ const packet=publicPacket(show);
+ assert.deepEqual(packet.item.question.promptImages,['stem-a','stem-b']);
+ assert.equal(packet.item.question.answer,undefined);
+ const html=renderToStaticMarkup(createElement(Stage,{packet}));
+ assert.match(html,/class="stage-question has-prompt-images"/);
+ assert.match(html,/stage-question-images/);
+ assert.match(html,/src="\/api\/media\/stem-a"/);
+ assert.match(html,/题干配图 1/);
+ assert.ok(html.includes('第一行\n第二行'));
+ assert.deepEqual(assetIds({promptImages:['stem-a','stem-b']}),['stem-a','stem-b']);
+ const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+ assert.match(css,/\.stage-option span\{[^}]*white-space:pre-wrap/);
+});
+
+test('题干配图通过保存校验并拒绝重复素材',()=>{
+ const q={...newQuestion('choice'),title:'配图题',prompt:'看图作答',answer:'A',promptImages:['stem-a','stem-b']};
+ assert.deepEqual(questionSchema.parse(q).promptImages,['stem-a','stem-b']);
+ assert.throws(()=>questionSchema.parse({...q,promptImages:['stem-a','stem-a']}));
+ assert.equal(questionSchema.parse({...q,promptImages:undefined}).promptImages,undefined);
 });

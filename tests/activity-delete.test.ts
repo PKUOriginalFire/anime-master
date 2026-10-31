@@ -30,7 +30,7 @@ test('活动删除要求所属主持或管理员、精确名称及当前版本�
   for(const confirmation of ['错误名称',show.title+' '])assert.equal((await request(c,owner.token,'DELETE',url,{...body,confirmation})).statusCode,400);
   assert.equal((await request(c,owner.token,'DELETE',url,{confirmation:show.title})).statusCode,400);
   assert.ok(c.store.show(show.id));
-  const deleted=await request(c,owner.token,'DELETE',url,body);assert.equal(deleted.statusCode,200,deleted.body);assert.deepEqual(deleted.json(),{ok:true});
+  const deleted=await request(c,owner.token,'DELETE',url,body);assert.equal(deleted.statusCode,200,deleted.body);assert.deepEqual(deleted.json(),{ok:true,trashedQuestions:0});
   assert.equal((await request(c,owner.token,'DELETE',url,body)).statusCode,404);
   assert.ok(c.store.show(keep.id));
   assert.equal((await request(c,admin.token,'DELETE',`/api/shows/${keep.id}`,{version:keep.version,confirmation:keep.title})).statusCode,200);

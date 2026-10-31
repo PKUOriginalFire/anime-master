@@ -21,7 +21,7 @@ const asset = z.string().max(100).regex(/^[a-zA-Z0-9_-]*$/);
 const item = z.object({id:z.string().min(1).max(40),text:text,image:asset.optional()});
 const choiceOption = item.extend({images:z.array(asset.min(1)).max(8).refine(ids=>new Set(ids).size===ids.length,'选项图片不能重复').optional(),imageVisibility:z.enum(['question','reveal']).optional()});
 const point = z.number().min(0).max(100);
-const base = {title:z.string().min(1).max(240),prompt:text,answer:text,explanation:text,notes:text,source:z.string().max(500),answerImage:asset.optional(),answerGallery:z.array(item.extend({group:z.number().int().min(1).max(50)})).max(30).optional(),activityId:z.string().max(64).optional()};
+const base = {title:z.string().min(1).max(240),prompt:text,promptImages:z.array(asset.min(1)).max(6).refine(ids=>new Set(ids).size===ids.length,'题干图片不能重复').optional(),answer:text,explanation:text,notes:text,source:z.string().max(500),answerImage:asset.optional(),answerGallery:z.array(item.extend({group:z.number().int().min(1).max(50)})).max(30).optional(),activityId:z.string().max(64).optional()};
 const timing = {start:z.number().min(0).max(86400),end:z.number().min(0).max(86400).optional()};
 export const questionSchema = z.discriminatedUnion('kind',[
  z.object({...base,kind:z.literal('choice'),config:z.object({options:z.array(choiceOption).min(2).max(8),correctId:z.string()})}),
@@ -41,9 +41,12 @@ export type Card = {id:string;type:'card';title:string;body:string;image?:string
 export type ShowItem = {id:string;type:'question';question:QuestionRow;blocked?:boolean;blockedReason?:string}|Card;
 export type MediaState = {playing:boolean;position:number;updatedAt:number;volume:number;muted:boolean;generation:number};
 export type StageState = {index:number;phase:'waiting'|'question'|'answer'|'settlement'|'full';step:number;answerStep?:number;choices:Record<string,'right'|'wrong'>;matches:{left:string;right:string;correct:boolean}[];media:MediaState};
-export type Show = {id:string;title:string;version:number;items:ShowItem[];state:StageState;displayKey?:string;ownerId:string;width:number;height:number};
+export type Show = {id:string;title:string;version:number;items:ShowItem[];state:StageState;displayKey?:string;ownerId:string;width:number;height:number;lockedAt?:string;completedAt?:string};
 export type StagePacket = {id:string;title:string;version:number;state:StageState;item:any;displayKey?:string;width:number;height:number};
-export type ActivityOption = StageSize & {id:string;title:string};
+export type ActivityOption = StageSize & {id:string;title:string;lockedAt?:string;completedAt?:string};
+export function canEditQuestion(u:User,q:Pick<QuestionRow,'authorId'|'status'>):boolean {return u.admin||q.authorId===u.id||(u.reviewer&&q.status!=='draft'&&q.status!=='deleted');}
+export function isActivityFrozen(a?:{lockedAt?:string;completedAt?:string}):boolean {return !!(a?.lockedAt||a?.completedAt);}
+export function activityStateName(a?:{lockedAt?:string;completedAt?:string}):''|'已锁定'|'已完成' {return a?.completedAt?'已完成':a?.lockedAt?'已锁定':'';}
 export const commandSchema=z.object({id:z.string().uuid(),version:z.number().int().nonnegative(),action:z.enum(['select','next','prev','step','back','answerStep','choice','match','revealPair','reveal','settle','full','reset','waiting','undo','play','pause','seek','volume','mute']),index:z.number().int().optional(),option:z.string().optional(),left:z.string().optional(),right:z.string().optional(),value:z.number().finite().optional()});
 export type Command=z.infer<typeof commandSchema>;
 
@@ -52,7 +55,7 @@ export function nextPlayableIndex(items:ShowItem[],index:number,direction:1|-1):
 
 export function freshState(index=0):StageState {return {index,phase:'waiting',step:0,answerStep:0,choices:{},matches:[],media:{playing:false,position:0,updatedAt:Date.now(),volume:1,muted:false,generation:0}};}
 export function newQuestion(kind:Kind):Question {
- const common={title:'',prompt:'',answer:'',explanation:'',notes:'',source:'',answerImage:'',activityId:''};
+ const common={title:'',prompt:'',promptImages:[],answer:'',explanation:'',notes:'',source:'',answerImage:'',activityId:''};
  const options=[{id:'A',text:'',image:''},{id:'B',text:'',image:''},{id:'C',text:'',image:''},{id:'D',text:'',image:''}];
  const configs={choice:{options,correctId:'A'},music:{audio:'',start:0},scene:{image:'',regions:[]},dialogue:{video:'',start:0,cutMode:'pause',answerStart:0},reasoning:{clues:[{id:'1',text:'',image:''}]},matching:{left:options.slice(0,2),right:[{id:'1',text:'',image:''},{id:'2',text:'',image:''}],pairs:[{left:'A',right:'1'},{left:'B',right:'2'}]},acting:{instruction:'请观众上台表演，其他观众猜出场景。',image:''},innovation:{presentation:''}};
  return {...common,kind,config:configs[kind]} as Question;
@@ -103,6 +106,6 @@ export function validateReady(q:Question):string[] {
 
 export function assetIds(value:unknown):string[] {
  const ids=new Set<string>();
- function walk(v:any){if(!v||typeof v!=='object')return;for(const [k,x]of Object.entries(v)){if(k==='images'&&Array.isArray(x)){for(const id of x)if(typeof id==='string'&&id)ids.add(id);}else if(['image','audio','video','answerVideo','answerImage','poster','answerPoster'].includes(k)&&typeof x==='string'&&x)ids.add(x);else walk(x);}}
+ function walk(v:any){if(!v||typeof v!=='object')return;for(const [k,x]of Object.entries(v)){if((k==='images'||k==='promptImages')&&Array.isArray(x)){for(const id of x)if(typeof id==='string'&&id)ids.add(id);}else if(['image','audio','video','answerVideo','answerImage','poster','answerPoster'].includes(k)&&typeof x==='string'&&x)ids.add(x);else walk(x);}}
  walk(value);return [...ids];
 }

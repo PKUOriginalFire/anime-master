@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {CalendarDays,ChevronRight,Plus,RefreshCw,Search} from 'lucide-react';
 import {api} from './api';
-import {DEFAULT_STAGE_HEIGHT,DEFAULT_STAGE_WIDTH,type Show,type User} from '../shared/model';
+import {DEFAULT_STAGE_HEIGHT,DEFAULT_STAGE_WIDTH,activityStateName,isActivityFrozen,type Show,type User} from '../shared/model';
 import {StageSizeFields,isValidStageSize} from './StageSizeFields';
 import './activities.css';
 
@@ -23,7 +23,7 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
   const [newHeight,setNewHeight]=useState(DEFAULT_STAGE_HEIGHT);
   const [busy,setBusy]=useState('');
   const [renaming,setRenaming]=useState<{id:string;version:number;title:string;width:number;height:number}>();
-  const [deleting,setDeleting]=useState<{id:string;version:number;title:string}>();
+  const [deleting,setDeleting]=useState<{id:string;version:number;title:string;completed:boolean}>();
   const [confirmation,setConfirmation]=useState('');
   const [deleteError,setDeleteError]=useState('');
   const [deleteStale,setDeleteStale]=useState(false);
@@ -47,15 +47,28 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
   };
   const remove=async()=>{
     if(!deleting||busy||deletingRequest.current||deleteStale||confirmation!==deleting.title)return;
-    deletingRequest.current=true;setBusy('delete:'+deleting.id);setDeleteError('');
+    const target=deleting;
+    deletingRequest.current=true;setBusy('delete:'+target.id);setDeleteError('');
     try{
-      await api('/shows/'+deleting.id,{version:deleting.version,confirmation},'DELETE');
-      setShows(previous=>previous.filter(show=>show.id!==deleting.id));setDeleting(undefined);setConfirmation('');onChanged?.();notify('活动已删除，原 OBS 展示链接已失效。');
+      const result=await api<{ok:true;trashedQuestions:number}>('/shows/'+target.id,{version:target.version,confirmation},'DELETE');
+      setShows(previous=>previous.filter(show=>show.id!==target.id));setDeleting(undefined);setConfirmation('');onChanged?.();notify(`活动已删除${result?.trashedQuestions?`，${result.trashedQuestions} 道题目已移入回收站`:''}，原 OBS 展示链接已失效。`);
     }catch(error:any){
-      const message=error.status===409?'活动已被修改，列表已刷新。请关闭此窗口，核对最新名称与状态后重新删除。':error.status===404?'活动已不存在，列表已刷新。':error.message||'删除失败，请检查网络后重试。';
+      const message=error.status===409?'活动状态已更新（可能已锁定或已完成），列表已刷新。请关闭此窗口，核对最新名称与状态后重新删除。':error.status===404?'活动已不存在，列表已刷新。':error.message||'删除失败，请检查网络后重试。';
       setDeleteError(message);setDeleteStale(error.status===409||error.status===404);if(error.status===409||error.status===404)await load();
     }
     finally{deletingRequest.current=false;setBusy('');}
+  };
+  const markActivity=async(show:Show,action:'lock'|'complete')=>{
+    if(busy)return;
+    if(action==='lock'?isActivityFrozen(show):!!show.completedAt)return;
+    const message=action==='lock'
+      ?`将活动“${show.title}”锁定？\n\n锁定后：\n· 题目固定在当前活动，不能批量改属，也不能新增题目；\n· 活动不能删除，但可以继续播放和修改内容；\n· 此操作不可撤销。`
+      :`将活动“${show.title}”标记为完成？\n\n完成后：\n· 题目固定在当前活动，不能批量改属，也不能新增题目；\n· 活动之后可以删除，删除时所属题目会一并移入回收站；\n· 此操作不可撤销。`;
+    if(!confirm(message))return;
+    setBusy(action+':'+show.id);
+    try{const updated=await api<Show>('/shows/'+show.id+'/'+action,{version:show.version});setShows(previous=>previous.map(item=>item.id===updated.id?updated:item));onChanged?.();notify(action==='lock'?'活动已锁定，题目已固定。':'活动已完成，题目已固定；之后删除活动时，所属题目会移入回收站。');}
+    catch(error:any){if(error.status===409){notify('活动状态已更新，列表已刷新，请核对后重试。');await load();}else notify(error.message);}
+    finally{setBusy('');}
   };
   const open=async(show:Show)=>{
     if(busy)return;
@@ -67,16 +80,16 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
     {creating&&<section className="panel activity-create"><form onSubmit={e=>{e.preventDefault();void create();}}><div><h3>新建活动</h3><p className="muted">为本场活动建立独立节目单，题库可在不同活动中重复使用。</p></div><label className="activity-title-field">活动名称<input aria-label="新活动名称" value={title} maxLength={120} autoFocus placeholder="例如：2026 秋季迎新晚会" onChange={e=>setTitle(e.target.value)} disabled={!!busy}/></label><StageSizeFields width={newWidth} height={newHeight} disabled={!!busy} onChange={(width,height)=>{setNewWidth(width);setNewHeight(height);}}/><div className="actions"><button className="button secondary" type="button" disabled={!!busy} onClick={()=>setCreating(false)}>取消</button><button className="button" disabled={!!busy||!title.trim()||!isValidStageSize(newWidth,newHeight)}>{busy==='create'?'正在创建…':'创建活动'}</button></div></form></section>}
     <div className="panel activity-toolbar"><label><Search size={16}/><input aria-label="搜索活动名称" value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索活动名称"/></label><span>{loading?'正在读取活动…':`${visible.length} 场活动`}</span><button className="text-button" disabled={loading||!!busy} onClick={()=>void load()}><RefreshCw size={14}/> 刷新</button></div>
     <div className="activity-grid">{visible.map(show=>{const manageable=canManage(show);const questions=show.items.filter(item=>item.type==='question');const blocked=questions.filter(item=>item.type==='question'&&item.blocked).length;const renameDraft=renaming?.id===show.id?renaming:undefined;return <section className="panel activity-card" key={show.id}>
-      <div className="activity-card-top"><CalendarDays size={19}/><span className={'activity-status '+(show.state.phase==='waiting'?'is-waiting':'is-active')}>{activityStatus(show)}</span></div>
+      <div className="activity-card-top"><CalendarDays size={19}/><div className="activity-card-badges">{activityStateName(show)&&<span className={'activity-used'+(show.completedAt?' is-completed':'')}>{activityStateName(show)}</span>}<span className={'activity-status '+(show.state.phase==='waiting'?'is-waiting':'is-active')}>{activityStatus(show)}</span></div></div>
       {renameDraft?<form className="activity-rename" onSubmit={e=>{e.preventDefault();void saveSettings();}}><label className="activity-title-field">活动名称<input aria-label={'修改活动名称 '+show.title} value={renameDraft.title} maxLength={120} autoFocus disabled={!!busy} onChange={e=>{const value=e.target.value;setRenaming(previous=>previous?{...previous,title:value}:previous);}}/></label><StageSizeFields width={renameDraft.width} height={renameDraft.height} disabled={!!busy} onChange={(width,height)=>{setRenaming(previous=>previous?{...previous,width,height}:previous);}}/><div className="actions"><button className="text-button" type="button" disabled={!!busy} onClick={()=>setRenaming(undefined)}>取消</button><button className="button secondary" disabled={!!busy||!renameDraft.title.trim()||!isValidStageSize(renameDraft.width,renameDraft.height)}>{busy===show.id?'保存中…':'保存设置'}</button></div></form>:<h2>{show.title}</h2>}
       <div className="activity-metrics"><span><b>{show.items.length}</b> 个节目画面</span><span><b>{questions.length}</b> 道题目</span><span>舞台 <b>{show.width}×{show.height}</b></span></div>
       <p className={blocked?'activity-blocked':'muted'}>{blocked?`${blocked} 道题修改待复审，播放时自动跳过`:'节目单中的题目与展示页面可在控制台编排。'}</p>
-      <div className="activity-card-actions">{manageable&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>setRenaming({id:show.id,version:show.version,title:show.title,width:show.width,height:show.height})}>活动设置</button>}{manageable&&<button className="text-button danger" disabled={!!busy} onClick={()=>{setDeleting({id:show.id,version:show.version,title:show.title});setConfirmation('');setDeleteError('');setDeleteStale(false);}}>删除活动</button>}<button className="button secondary" disabled={!!busy} onClick={()=>void open(show)}>{busy===show.id?'正在打开…':manageable?'进入控制台 / 编排':'查看节目单'}<ChevronRight size={15}/></button></div>
+      <div className="activity-card-actions">{manageable&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>setRenaming({id:show.id,version:show.version,title:show.title,width:show.width,height:show.height})}>活动设置</button>}{manageable&&!isActivityFrozen(show)&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'lock')}>{busy==='lock:'+show.id?'锁定中…':'锁定活动'}</button>}{manageable&&!show.completedAt&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'complete')}>{busy==='complete:'+show.id?'完成中…':'完成活动'}</button>}{manageable&&(!show.lockedAt||show.completedAt)&&<button className="text-button danger" disabled={!!busy} onClick={()=>{setDeleting({id:show.id,version:show.version,title:show.title,completed:!!show.completedAt});setConfirmation('');setDeleteError('');setDeleteStale(false);}}>删除活动</button>}<button className="button secondary" disabled={!!busy} onClick={()=>void open(show)}>{busy===show.id?'正在打开…':manageable?'进入控制台 / 编排':'查看节目单'}<ChevronRight size={15}/></button></div>
     </section>;})}</div>
     {deleting&&<div className="modal-backdrop"><form className="modal activity-delete-modal" role="dialog" aria-modal="true" aria-labelledby="activity-delete-heading" onSubmit={event=>{event.preventDefault();void remove();}}>
       <div className="panel-heading"><h2 id="activity-delete-heading">删除活动</h2><button className="text-button" type="button" disabled={!!busy} onClick={()=>setDeleting(undefined)}>关闭</button></div>
-      <p>将删除“<strong>{deleting.title}</strong>”的节目单及现场控制状态，原 OBS 展示链接立即失效。此操作无法撤销。</p>
-      <p className="muted">题库、素材与修改历史保留。仍被题目、历史版本或其他活动引用的素材，继续受到保护。</p>
+      <p>将删除“<strong>{deleting.title}</strong>”的节目单及现场控制状态，原 OBS 展示链接立即失效。{deleting.completed&&'该活动已完成，所属题目将一并移入回收站。'}此操作无法撤销。</p>
+      <p className="muted">{deleting.completed?'移入回收站的题目可由管理员恢复；仍被其他活动或历史版本引用的素材继续受到保护。':'题库、素材与修改历史保留。仍被题目、历史版本或其他活动引用的素材，继续受到保护。'}</p>
       <label className="activity-title-field">输入完整活动名称以确认<input autoFocus aria-label="确认删除的活动名称" autoComplete="off" value={confirmation} disabled={!!busy||deleteStale} onChange={event=>setConfirmation(event.target.value)}/></label>
       {deleteError&&<p className="activity-delete-error" role="alert">{deleteError}</p>}
       <div className="modal-footer"><button className="button secondary" type="button" disabled={!!busy} onClick={()=>setDeleting(undefined)}>取消</button><button className="button danger" type="submit" disabled={!!busy||deleteStale||confirmation!==deleting.title}>{busy==='delete:'+deleting.id?'正在删除…':'确认删除活动'}</button></div>
