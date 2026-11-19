@@ -12,30 +12,30 @@ type ProfileProps={
 };
 
 export function Profile({user,notify,onUserChanged,onLogout}:ProfileProps){
-  const [username,setUsername]=useState(user.username);
+  const [nickname,setNickname]=useState(user.nickname);
   const [oldPassword,setOldPassword]=useState('');
   const [password,setPassword]=useState('');
-  const [busy,setBusy]=useState<'name'|'password'|''>('');
+  const [busy,setBusy]=useState<'nickname'|'password'|''>('');
   const [nameError,setNameError]=useState('');
   const [passwordError,setPasswordError]=useState('');
   const builtinAdmin=user.username==='admin';
-  const trimmedUsername=username.trim();
-  useEffect(()=>{setUsername(user.username);setNameError('');},[user.id,user.username]);
+  const trimmedNickname=nickname.trim();
+  useEffect(()=>{setNickname(user.nickname);setNameError('');},[user.id,user.nickname]);
 
-  const rename=async(event:FormEvent)=>{
+  const saveProfile=async(event:FormEvent)=>{
     event.preventDefault();
-    if(busy||builtinAdmin)return;
-    if(!trimmedUsername||Array.from(trimmedUsername).length>32||!/^[\p{L}\p{N}_-]+$/u.test(trimmedUsername)){
-      setNameError('用户名需为 1 至 32 个文字、数字、下划线或短横线。');
+    if(busy)return;
+    if(!trimmedNickname||trimmedNickname.length>32||/[\r\n\t]/.test(trimmedNickname)){
+      setNameError('昵称需为 1 至 32 个字符，且不能包含换行或制表符。');
       return;
     }
-    if(trimmedUsername===user.username)return;
-    setBusy('name');setNameError('');
+    if(trimmedNickname===user.nickname)return;
+    setBusy('nickname');setNameError('');
     try{
-      const result=await api<{user:User}>('/profile',{username:trimmedUsername},'PATCH');
+      const result=await api<{user:User}>('/profile',{nickname:trimmedNickname},'PATCH');
       onUserChanged(result.user);
-      setUsername(result.user.username);
-      notify('用户名已更新，下次登录请使用新名字。');
+      setNickname(result.user.nickname);
+      notify('昵称已更新。');
     }catch(error:any){setNameError(error.message);notify(error.message);}
     finally{setBusy('');}
   };
@@ -55,18 +55,21 @@ export function Profile({user,notify,onUserChanged,onLogout}:ProfileProps){
   };
 
   return <div className="profile-page">
-    <div className="page-heading"><div><h1>账号设置</h1><p>管理登录名字与密码。</p></div></div>
+    <div className="page-heading"><div><h1>账号设置</h1><p>管理昵称与密码。</p></div></div>
     <div className="profile-grid">
-      <form className="panel profile-card" onSubmit={rename}>
+      <form className="panel profile-card" onSubmit={saveProfile}>
         <h2>个人资料</h2>
-        <p className="muted">改名后，使用新用户名登录，题目仍保留在你的账号中。</p>
-        <Field label="用户名" hint="支持单个字符；可用文字、数字、下划线与短横线。">
-          <input required minLength={1} maxLength={32} autoComplete="username" value={username} disabled={builtinAdmin||!!busy} onChange={event=>{setUsername(event.target.value);setNameError('');}} aria-invalid={!!nameError} aria-describedby={nameError?'profile-name-error':undefined}/>
+        <p className="muted">昵称会显示在题目、留言与历史记录中，可随时修改；登录用户名注册后固定。</p>
+        <Field label="昵称" hint="1～32 个字符，可包含空格；不能包含换行或制表符。">
+          <input required minLength={1} maxLength={32} autoComplete="nickname" value={nickname} disabled={!!busy} onChange={event=>{setNickname(event.target.value);setNameError('');}} aria-invalid={!!nameError} aria-describedby={nameError?'profile-name-error':undefined}/>
         </Field>
-        {builtinAdmin&&<p className="profile-note">内置管理员 admin 使用固定名称，以保护管理员账号与权限。</p>}
-        <div className="profile-id"><span>用户 ID</span><code>{user.id}</code><small>账号的固定标识，改名后保持不变。</small></div>
+        <Field label="登录用户名" hint="用于登录，全局唯一；注册后固定，如需更改请联系管理员。">
+          <input value={user.username} disabled autoComplete="username"/>
+        </Field>
+        {builtinAdmin&&<p className="profile-note">内置管理员 admin 的登录用户名固定；昵称仍可修改。</p>}
+        <div className="profile-id"><span>用户 ID</span><code>{user.id}</code><small>账号的固定标识，修改昵称或登录用户名后保持不变。</small></div>
         {nameError&&<p id="profile-name-error" className="profile-error" role="alert">{nameError}</p>}
-        <button className="button" disabled={builtinAdmin||!!busy||trimmedUsername===user.username||!trimmedUsername}>{busy==='name'?'正在保存…':'保存用户名'}</button>
+        <button className="button" disabled={!!busy||trimmedNickname===user.nickname||!trimmedNickname}>{busy==='nickname'?'正在保存…':'保存昵称'}</button>
       </form>
       <form className="panel profile-card" onSubmit={changePassword}>
         <h2>修改密码</h2>

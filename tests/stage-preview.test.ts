@@ -5,7 +5,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {Stage} from '../src/Stage.tsx';
 import {advance,publicPacket} from '../server/stage.ts';
-import {freshState,type QuestionRow,type Show} from '../shared/model.ts';
+import {freshState,maxStep,presentationPages,type QuestionRow,type Show} from '../shared/model.ts';
 
 const presentation='三位观众上台，用肢体动作演绎词语，其他观众抢答。';
 const question:QuestionRow={kind:'innovation',id:'innovation',title:'舞台表现说明',prompt:'按舞台提示完成互动',answer:'参考答案：手舞足蹈',explanation:'解析文本',notes:'主持人私密备注',source:'',config:{presentation},authorId:'author-id',author:'出题人',status:'accepted',version:1,updatedAt:''};
@@ -50,4 +50,28 @@ test('窄容器预览样式保留可读宽度并横向滚动，展示端不受�
  assert.match(styleCss,/\.live-preview-stage\{[^}]*overflow-x:auto/);
  assert.match(styleCss,/\.live-preview-stage>\.stage-frame\{min-width:960px\}/);
  assert.doesNotMatch(styleCss,/\.display-page>\.stage-frame\{[^}]*min-width/);
+});
+
+
+test('长说明翻页保留字素和换行，展示端仅收到当前页，前后翻页都有边界',()=>{
+ const longText='字'.repeat(287)+'👩‍🎨'+'下一页'+('\r\n第二段\t说明'.repeat(1200));
+ const pages=presentationPages(longText);
+ assert.equal(pages.join(''),longText);
+ assert.ok(pages[0].endsWith('👩‍🎨'));
+ assert.ok(pages[1].startsWith('下一页'));
+ const show=showFor('question');
+ const q={...question,kind:'innovation' as const,config:{presentation:longText}};
+ show.items=[{id:'item',type:'question',question:q}];
+ assert.equal(maxStep(q),pages.length-1);
+ const turn=(action:'back'|'step')=>{show.state=advance(show.state,show.items,{id:'cmd',version:1,action});};
+ turn('back');
+ assert.equal(show.state.step,0);
+ turn('step');
+ const packet=publicPacket(show);
+ assert.equal(packet.item.question.config.presentation,pages[1]);
+ assert.equal(packet.item.question.config.pageCount,pages.length);
+ assert.ok(!JSON.stringify(packet).includes('👩‍🎨'));
+ show.state.step=pages.length-1;turn('step');
+ assert.equal(show.state.step,pages.length-1);
+ assert.deepEqual(presentationPages(''),['']);
 });

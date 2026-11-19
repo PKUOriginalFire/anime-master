@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {io as client,type Socket} from 'socket.io-client';
 import {buildApp} from '../server/app.ts';
-import {newQuestion,freshState,validateReady,type Show} from '../shared/model.ts';
+import {newQuestion,freshState,validateReady,type Show,type StagePacket} from '../shared/model.ts';
 import {advance,publicPacket} from '../server/stage.ts';
 
 const hasExampleSeed=existsSync('seed/questions.json');
@@ -124,11 +124,26 @@ test('七类题型逐一完成出题、提交、留言、修改、录用与编�
 test('真实 Socket.IO：展示只读、主持同步、重连快照与权限撤销',async()=>{
  const c=await fixture();const sockets:Socket[]=[];try{
   await c.app.listen({port:0,host:'127.0.0.1'});const url='http://127.0.0.1:'+(c.app.server.address() as any).port;const token=await login(c);let s=(await request(c,token,'POST','/api/shows',{title:'Socket 测试'})).json();
+  let choice=(await request(c,token,'POST','/api/questions',{...sample(),activityId:s.id})).json();
+  for(const status of ['pending','accepted'])choice=(await request(c,token,'POST',`/api/questions/${choice.id}/status`,{version:choice.version,status})).json();
+  s=(await request(c,token,'PUT',`/api/shows/${s.id}`,{version:s.version,title:s.title,items:[{type:'question',questionId:choice.id}]})).json();
   const connect=(auth:any,cookie?:string)=>new Promise<Socket>((resolve,reject)=>{const socket=client(url,{auth,extraHeaders:cookie?{Cookie:'session='+cookie}:undefined,forceNew:true});sockets.push(socket);socket.once('connect',()=>resolve(socket));socket.once('connect_error',reject);});
   const host=await connect({showId:s.id,mode:'host'},token),display=await connect({showId:s.id,mode:'display',key:s.displayKey});
   const cmd={id:randomUUID(),version:s.version,action:'select',index:0};const ack=await host.timeout(2000).emitWithAck('command',cmd);assert.equal(ack.ok,true);s=ack.show;
+  const focusedVersion=s.version+1;
+  const broadcast=new Promise<StagePacket>((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(new Error('展示端未收到放大状态')),3000);
+   const receive=(packet:StagePacket)=>{
+    if(packet.version!==focusedVersion)return;
+    display.off('state',receive);clearTimeout(timer);resolve(packet);
+   };
+   display.on('state',receive);
+  });
+  const [focused,visible]=await Promise.all([host.timeout(2000).emitWithAck('command',{id:randomUUID(),version:s.version,action:'focusOption',option:'B'}),broadcast]);
+  assert.equal(focused.ok,true);s=focused.show;
+  assert.equal(visible.state.focusedOption,'B');assert.deepEqual(visible.state.choices,{});
   const denied=await display.timeout(2000).emitWithAck('command',{id:randomUUID(),version:s.version,action:'waiting'});assert.equal(denied.ok,false);
-  display.disconnect();const reconnected=client(url,{auth:{showId:s.id,mode:'display',key:s.displayKey},forceNew:true});sockets.push(reconnected);const packet:any=await new Promise((resolve,reject)=>{reconnected.once('state',resolve);reconnected.once('connect_error',reject);});assert.equal(packet.version,s.version);assert.equal(packet.state.phase,'question');assert.ok(!JSON.stringify(packet).includes('displayKey'));
+  display.disconnect();const reconnected=client(url,{auth:{showId:s.id,mode:'display',key:s.displayKey},forceNew:true});sockets.push(reconnected);const packet:any=await new Promise((resolve,reject)=>{reconnected.once('state',resolve);reconnected.once('connect_error',reject);});assert.equal(packet.version,s.version);assert.equal(packet.state.phase,'question');assert.equal(packet.state.focusedOption,'B');assert.ok(!JSON.stringify(packet).includes('displayKey'));
   const user=c.store.all('SELECT id FROM users')[0];c.store.run('UPDATE users SET disabled=1 WHERE id=?',user.id);const refused=await host.timeout(2000).emitWithAck('command',{id:randomUUID(),version:s.version,action:'waiting'});assert.equal(refused.ok,false);
  }finally{for(const s of sockets)s.disconnect();await c.cleanup();}
 });

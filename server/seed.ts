@@ -28,7 +28,7 @@ export async function seedLibrary(store:Store,adminId:string,profile:'examples'|
  for(const m of seed.media)copyFileSync(resolve('seed/media',m.filename),join(store.dir,'media',m.filename));
  const seededShowId=profile==='full'?randomUUID():undefined;
  store.transaction(()=>{
-  for(const [username,account]of authors)if(account.password)store.run('INSERT INTO users(id,username,password) VALUES(?,?,?)',account.id,username,account.password);
+  for(const [username,account]of authors)if(account.password)store.run('INSERT INTO users(id,username,nickname,password) VALUES(?,?,?,?)',account.id,username,username,account.password);
   for(const m of seed.media)store.run('INSERT OR IGNORE INTO media VALUES(?,?,?,?,?,?)',m.id,adminId,m.filename,m.mime,statSync(join(store.dir,'media',m.filename)).size,JSON.stringify(m.metadata||{}));
   const ids=new Map<string,string>();
   for(const {raw,question}of questions){

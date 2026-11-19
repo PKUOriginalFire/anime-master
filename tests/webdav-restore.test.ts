@@ -1,4 +1,6 @@
 import test from 'node:test';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -172,3 +174,35 @@ test('备份标签不一致时拒绝恢复', async t => {
   assert.equal((database.prepare('SELECT text FROM questions').get() as { text: string }).text, 'old');
   database.close();
 });
+
+
+for(const failure of ['move-media','install-media','rollback-db']){
+ test(`恢复失败只逆转本次成功的改动：${failure}`,async t=>{
+  const dav=await createDavServer();t.after(()=>dav.close());
+  const dir=makeExistingDataDir();t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const databasePath=join(dir,'quiz.sqlite');
+  const oldDatabase=readFileSync(databasePath);
+  const media=join(dir,'media');
+  addSnapshot(dav.entries,'20260101T000000Z',makeDatabase('new'),makeMediaArchive('new.txt','new'));
+  const rename=fs.renameSync;
+  const mock=t.mock.method(fs,'renameSync',(from:string,to:string)=>{
+   if((failure!=='install-media'&&from===media)||(failure==='install-media'&&to===media&&from.includes('/unpacked/'))||
+      (failure==='rollback-db'&&to===databasePath&&from.includes('/pre-restore-')))throw new Error('测试搬移失败');
+   return rename(from,to);
+  });
+  syncBuiltinESMExports();
+  try {
+   await assert.rejects(runRestore(makeConfig(dav.url,dir),{confirm:true,logger:()=>{}}),failure==='rollback-db'?/回滚未完成/:/测试搬移失败/);
+  } finally {mock.mock.restore();syncBuiltinESMExports();}
+  assert.equal(readFileSync(join(media,'old.txt'),'utf8'),'old-media');
+  assert.equal(readFileSync(join(dir,'quiz.sqlite-wal'),'utf8'),'stale-wal');
+  const saved=readdirSync(join(dir,'backups')).filter(name=>name.startsWith('pre-restore-'));
+  if(failure==='rollback-db'){
+   assert.equal(saved.length,1);
+   assert.deepEqual(readFileSync(join(dir,'backups',saved[0],'quiz.sqlite')),oldDatabase);
+  }else{
+   assert.deepEqual(saved,[]);
+   assert.deepEqual(readFileSync(databasePath),oldDatabase);
+  }
+ });
+}

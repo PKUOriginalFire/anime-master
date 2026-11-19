@@ -5,7 +5,7 @@ import {withSectionTitles,typeInstructions,type RundownItem} from '../src/rundow
 
 test('开场只显示互动环节，八种题型分别插入标题，题目顺序不变',()=>{
  const questions=kinds.map(kind=>({type:'question' as const,questionId:kind}));
- const input:RundownItem[]=[{type:'card',title:'彩排活动',body:'旧开场文字'},...questions];
+ const input:RundownItem[]=[{type:'card',title:'彩排活动',body:'欢迎来到元火动漫晚会 · 互动环节'},...questions];
  const lookup=Object.fromEntries(kinds.map(kind=>[kind,kind]));
  const result=withSectionTitles(input,lookup,'彩排活动');
  assert.equal(result.length,18);
@@ -16,7 +16,7 @@ test('开场只显示互动环节，八种题型分别插入标题，题目顺�
   assert.deepEqual(result[i*2+2],questions[i]);
  });
  assert.deepEqual(withSectionTitles(result,lookup,'彩排活动'),result);
- assert.equal((input[0] as any).body,'旧开场文字');
+ assert.equal((input[0] as any).body,'欢迎来到元火动漫晚会 · 互动环节');
 });
 
 test('连续同类题只出现一次标题，切换题型重新分组且保留奖品页',()=>{
@@ -42,4 +42,20 @@ test('自定义题型说明与已有抽奖页保留，重新编排不重复添�
  assert.ok(result.includes(input[1]));
  assert.ok(result.includes(input[3]));
  assert.deepEqual(withSectionTitles(result,{q:'choice'}),result);
+});
+
+test('保留自定义开场的正文和图片，并继续兼容旧默认模板',()=>{
+ const lookup={q:'choice'} as const;
+ const question={type:'question',questionId:'q'} as const;
+ for(const card of [
+  {type:'card',title:'互动环节',body:'主持人自行介绍'},
+  {type:'card',title:'彩排活动',body:'',image:'opening-image'},
+  {type:'card',title:'元火动漫晚会',body:'欢迎来到元火动漫晚会 · 互动环节',image:'opening-image'}
+ ] as const){
+  const result=withSectionTitles([card,question],lookup,'彩排活动');
+  assert.deepEqual(result[0],card);
+  assert.deepEqual(withSectionTitles(result,lookup,'彩排活动'),result);
+ }
+ const legacy={type:'card',title:'元火动漫晚会',body:'欢迎来到元火动漫晚会 · 互动环节'} as const;
+ assert.deepEqual(withSectionTitles([legacy,question],lookup,'彩排活动')[0],{type:'card',title:'互动环节',body:''});
 });

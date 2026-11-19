@@ -46,7 +46,7 @@ export function registerAdminRoutes(app:FastifyInstance, {store,dir,requireUser}
   };
   const inventory = () => {
     const refs = references();
-    const files = store.all('SELECT m.*,u.username AS owner FROM media m JOIN users u ON u.id=m.owner_id ORDER BY m.rowid DESC').map(row => ({
+    const files = store.all("SELECT m.*,COALESCE(NULLIF(u.nickname,''),u.username) AS owner FROM media m JOIN users u ON u.id=m.owner_id ORDER BY m.rowid DESC").map(row => ({
       id:row.id, filename:row.filename, ownerId:row.owner_id, owner:row.owner, mime:row.mime,
       size:row.size, metadata:JSON.parse(row.metadata), missing:!existsSync(join(dir,'media',row.filename)),
       references:refs.get(row.id)||[]
@@ -65,7 +65,7 @@ export function registerAdminRoutes(app:FastifyInstance, {store,dir,requireUser}
   app.get('/api/admin/storage',async req => {admin(req); return inventory();});
   app.get('/api/admin/audit',async req => {
     admin(req);
-    return store.all('SELECT a.*,u.username AS actor FROM audit_events a JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 40')
+    return store.all("SELECT a.*,COALESCE(NULLIF(u.nickname,''),u.username) AS actor FROM audit_events a JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 40")
       .map(row=>({...row,data:JSON.parse(row.data)}));
   });
   app.post('/api/admin/media/delete',async req => {
@@ -108,8 +108,8 @@ export function registerAdminRoutes(app:FastifyInstance, {store,dir,requireUser}
     const format = z.enum(['json','zip']).parse(req.query.format||'zip');
     const snapshot = store.transaction(() => {
       const questions = store.all('SELECT id FROM questions ORDER BY id').map(r=>store.question(r.id)!);
-      const comments = store.all('SELECT c.*,u.username AS author FROM comments c JOIN users u ON u.id=c.user_id');
-      const revisions = store.all('SELECT r.*,u.username AS actor FROM revisions r JOIN users u ON u.id=r.actor_id').map(r=>({...r,data:JSON.parse(r.data)}));
+      const comments = store.all("SELECT c.*,COALESCE(NULLIF(u.nickname,''),u.username) AS author FROM comments c JOIN users u ON u.id=c.user_id");
+      const revisions = store.all("SELECT r.*,COALESCE(NULLIF(u.nickname,''),u.username) AS actor FROM revisions r JOIN users u ON u.id=r.actor_id").map(r=>({...r,data:JSON.parse(r.data)}));
       const ids = assetIds({questions,revisions});
       const media = ids.map(id=>store.one('SELECT id,filename,mime,size,metadata FROM media WHERE id=?',id)).filter(Boolean).map(m=>({...m,metadata:JSON.parse(m.metadata)}));
       return {schemaVersion:1,exportedAt:new Date().toISOString(),includesDeleted:true,questions,comments,revisions,media};

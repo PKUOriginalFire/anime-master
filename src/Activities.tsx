@@ -22,7 +22,7 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
   const [newWidth,setNewWidth]=useState(DEFAULT_STAGE_WIDTH);
   const [newHeight,setNewHeight]=useState(DEFAULT_STAGE_HEIGHT);
   const [busy,setBusy]=useState('');
-  const [renaming,setRenaming]=useState<{id:string;version:number;title:string;width:number;height:number}>();
+  const [renaming,setRenaming]=useState<{id:string;version:number;title:string;width:number;height:number;stale?:boolean}>();
   const [deleting,setDeleting]=useState<{id:string;version:number;title:string;completed:boolean}>();
   const [confirmation,setConfirmation]=useState('');
   const [deleteError,setDeleteError]=useState('');
@@ -39,11 +39,22 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
     try{const show=await api<Show>('/shows',{title:title.trim(),width:newWidth,height:newHeight});setShows(previous=>[show,...previous]);setCreating(false);setTitle('');setNewWidth(DEFAULT_STAGE_WIDTH);setNewHeight(DEFAULT_STAGE_HEIGHT);onChanged?.();notify('活动已创建，可进入控制台编排节目。');}
     catch(error:any){notify(error.message);}finally{setBusy('');}
   };
+  const beginSettings=({id,version,title,width,height}:Show)=>setRenaming({id,version,title,width,height});
   const saveSettings=async()=>{
-    if(!renaming||busy||!renaming.title.trim()||!isValidStageSize(renaming.width,renaming.height))return;
-    setBusy(renaming.id);
-    try{const updated=await api<Show>('/shows/'+renaming.id+'/settings',{version:renaming.version,title:renaming.title.trim(),width:renaming.width,height:renaming.height},'PATCH');setShows(previous=>previous.map(show=>show.id===updated.id?updated:show));setRenaming(undefined);onChanged?.();notify('活动设置已更新，关联题目的预览会使用新的舞台分辨率。');}
-    catch(error:any){notify(error.message);await load();}finally{setBusy('');}
+    if(!renaming||busy)return;
+    const {id,version,width,height,stale}=renaming;const title=renaming.title.trim();
+    if(!stale&&(!title||!isValidStageSize(width,height)))return;
+    setBusy(id);
+    try{
+      const path='/shows/'+id;
+      const updated=stale?await api<Show>(path):await api<Show>(path+'/settings',{version,title,width,height},'PATCH');
+      setShows(previous=>previous.map(show=>show.id===id?updated:show));onChanged?.();
+      if(stale){beginSettings(updated);notify('已载入最新设置，请核对后修改并保存。');}
+      else{setRenaming(undefined);notify('活动设置已更新，关联题目的预览会使用新的舞台分辨率。');}
+    }catch(error:any){
+      if(error.status===409)setRenaming({...renaming,stale:true});
+      else{notify(error.message);await load();}
+    }finally{setBusy('');}
   };
   const remove=async()=>{
     if(!deleting||busy||deletingRequest.current||deleteStale||confirmation!==deleting.title)return;
@@ -81,10 +92,10 @@ export function Activities({user,notify,onOpen,onChanged}:{user:User;notify:(mes
     <div className="panel activity-toolbar"><label><Search size={16}/><input aria-label="搜索活动名称" value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索活动名称"/></label><span>{loading?'正在读取活动…':`${visible.length} 场活动`}</span><button className="text-button" disabled={loading||!!busy} onClick={()=>void load()}><RefreshCw size={14}/> 刷新</button></div>
     <div className="activity-grid">{visible.map(show=>{const manageable=canManage(show);const questions=show.items.filter(item=>item.type==='question');const blocked=questions.filter(item=>item.type==='question'&&item.blocked).length;const renameDraft=renaming?.id===show.id?renaming:undefined;return <section className="panel activity-card" key={show.id}>
       <div className="activity-card-top"><CalendarDays size={19}/><div className="activity-card-badges">{activityStateName(show)&&<span className={'activity-used'+(show.completedAt?' is-completed':'')}>{activityStateName(show)}</span>}<span className={'activity-status '+(show.state.phase==='waiting'?'is-waiting':'is-active')}>{activityStatus(show)}</span></div></div>
-      {renameDraft?<form className="activity-rename" onSubmit={e=>{e.preventDefault();void saveSettings();}}><label className="activity-title-field">活动名称<input aria-label={'修改活动名称 '+show.title} value={renameDraft.title} maxLength={120} autoFocus disabled={!!busy} onChange={e=>{const value=e.target.value;setRenaming(previous=>previous?{...previous,title:value}:previous);}}/></label><StageSizeFields width={renameDraft.width} height={renameDraft.height} disabled={!!busy} onChange={(width,height)=>{setRenaming(previous=>previous?{...previous,width,height}:previous);}}/><div className="actions"><button className="text-button" type="button" disabled={!!busy} onClick={()=>setRenaming(undefined)}>取消</button><button className="button secondary" disabled={!!busy||!renameDraft.title.trim()||!isValidStageSize(renameDraft.width,renameDraft.height)}>{busy===show.id?'保存中…':'保存设置'}</button></div></form>:<h2>{show.title}</h2>}
+      {renameDraft?<form className="activity-rename" onSubmit={e=>{e.preventDefault();void saveSettings();}}><label className="activity-title-field">活动名称<input aria-label={'修改活动名称 '+show.title} value={renameDraft.title} maxLength={120} autoFocus disabled={!!busy||renameDraft.stale} onChange={e=>{const value=e.target.value;setRenaming(previous=>previous?{...previous,title:value}:previous);}}/></label><StageSizeFields width={renameDraft.width} height={renameDraft.height} disabled={!!busy||renameDraft.stale} onChange={(width,height)=>{setRenaming(previous=>previous?{...previous,width,height}:previous);}}/>{renameDraft.stale&&<p className="danger-text" role="alert">活动设置已更新。请载入最新设置，核对后重新修改并保存。</p>}<div className="actions"><button className="text-button" type="button" disabled={!!busy} onClick={()=>setRenaming(undefined)}>取消</button><button className="button secondary" disabled={!!busy||(!renameDraft.stale&&(!renameDraft.title.trim()||!isValidStageSize(renameDraft.width,renameDraft.height)))}>{busy===show.id?'处理中…':renameDraft.stale?'载入最新设置':'保存设置'}</button></div></form>:<h2>{show.title}</h2>}
       <div className="activity-metrics"><span><b>{show.items.length}</b> 个节目画面</span><span><b>{questions.length}</b> 道题目</span><span>舞台 <b>{show.width}×{show.height}</b></span></div>
-      <p className={blocked?'activity-blocked':'muted'}>{blocked?`${blocked} 道题修改待复审，播放时自动跳过`:'节目单中的题目与展示页面可在控制台编排。'}</p>
-      <div className="activity-card-actions">{manageable&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>setRenaming({id:show.id,version:show.version,title:show.title,width:show.width,height:show.height})}>活动设置</button>}{manageable&&!isActivityFrozen(show)&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'lock')}>{busy==='lock:'+show.id?'锁定中…':'锁定活动'}</button>}{manageable&&!show.completedAt&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'complete')}>{busy==='complete:'+show.id?'完成中…':'完成活动'}</button>}{manageable&&(!show.lockedAt||show.completedAt)&&<button className="text-button danger" disabled={!!busy} onClick={()=>{setDeleting({id:show.id,version:show.version,title:show.title,completed:!!show.completedAt});setConfirmation('');setDeleteError('');setDeleteStale(false);}}>删除活动</button>}<button className="button secondary" disabled={!!busy} onClick={()=>void open(show)}>{busy===show.id?'正在打开…':manageable?'进入控制台 / 编排':'查看节目单'}<ChevronRight size={15}/></button></div>
+      <p className={blocked?'activity-blocked':'muted'}>{blocked?`${blocked} 道题已暂停，播放时自动跳过`:'节目单中的题目与展示页面可在控制台编排。'}</p>
+      <div className="activity-card-actions">{manageable&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>beginSettings(show)}>活动设置</button>}{manageable&&!isActivityFrozen(show)&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'lock')}>{busy==='lock:'+show.id?'锁定中…':'锁定活动'}</button>}{manageable&&!show.completedAt&&!renameDraft&&<button className="text-button" disabled={!!busy} onClick={()=>void markActivity(show,'complete')}>{busy==='complete:'+show.id?'完成中…':'完成活动'}</button>}{manageable&&(!show.lockedAt||show.completedAt)&&<button className="text-button danger" disabled={!!busy} onClick={()=>{setDeleting({id:show.id,version:show.version,title:show.title,completed:!!show.completedAt});setConfirmation('');setDeleteError('');setDeleteStale(false);}}>删除活动</button>}<button className="button secondary" disabled={!!busy} onClick={()=>void open(show)}>{busy===show.id?'正在打开…':manageable?'进入控制台 / 编排':'查看节目单'}<ChevronRight size={15}/></button></div>
     </section>;})}</div>
     {deleting&&<div className="modal-backdrop"><form className="modal activity-delete-modal" role="dialog" aria-modal="true" aria-labelledby="activity-delete-heading" onSubmit={event=>{event.preventDefault();void remove();}}>
       <div className="panel-heading"><h2 id="activity-delete-heading">删除活动</h2><button className="text-button" type="button" disabled={!!busy} onClick={()=>setDeleting(undefined)}>关闭</button></div>

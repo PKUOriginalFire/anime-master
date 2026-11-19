@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmdirSync, lstatSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { basename, join } from 'node:path';
@@ -498,9 +498,17 @@ export async function runRestore(input, options = {}) {
       if (sha256 !== entry.sha256) throw new Error(`${entry.name} sha256 校验失败`);
     }
     verifyDatabase(join(tempDir, 'quiz.sqlite'));
+    const incoming = [join(tempDir, 'quiz.sqlite')];
     if (mediaEntry) {
       logger('校验媒体归档');
-      verifyArchive(join(tempDir, 'media.tgz'));
+      const archive = join(tempDir, 'media.tgz');
+      verifyArchive(archive);
+      const unpacked = join(tempDir, 'unpacked');
+      mkdirSync(unpacked);
+      execFileSync('tar', ['-xzf', archive, '-C', unpacked, '--no-same-owner']);
+      const media = join(unpacked, 'media');
+      if (!lstatSync(media).isDirectory()) throw new Error('媒体归档缺少 media 目录');
+      incoming.push(media);
     }
     const existing = ['quiz.sqlite', 'quiz.sqlite-wal', 'quiz.sqlite-shm']
       .map(name => join(config.dataDir, name))
@@ -508,29 +516,38 @@ export async function runRestore(input, options = {}) {
     const existingMedia = join(config.dataDir, 'media');
     if (existsSync(existingMedia)) existing.push(existingMedia);
     if (existing.length) {
-      preRestoreDir = join(backupRoot, `pre-restore-${formatId(options.now || new Date())}-${process.pid}`);
-      mkdirSync(preRestoreDir, { recursive: true, mode: 0o700 });
+      preRestoreDir = mkdtempSync(join(backupRoot, `pre-restore-${formatId(options.now || new Date())}-`));
     }
     const moved = [];
+    const installed = [];
     try {
       for (const source of existing) {
         const targetPath = join(preRestoreDir, basename(source));
         renameSync(source, targetPath);
         moved.push({ source, targetPath });
       }
-      copyFileSync(join(tempDir, 'quiz.sqlite'), join(config.dataDir, 'quiz.sqlite'));
-      if (mediaEntry) execFileSync('tar', ['-xzf', join(tempDir, 'media.tgz'), '-C', config.dataDir, '--no-same-owner']);
+      for (const source of incoming) {
+        const targetPath = join(config.dataDir, basename(source));
+        renameSync(source, targetPath);
+        installed.push({ source, targetPath });
+      }
       logger(`恢复完成：${target.name}`);
       if (preRestoreDir) logger(`恢复前数据已保存到 ${preRestoreDir}`);
       return { id: target.name, files: selected.map(entry => entry.name), preRestoreDir };
     } catch (error) {
       logger('恢复失败，回滚恢复前数据');
-      for (const name of ['quiz.sqlite', 'quiz.sqlite-wal', 'quiz.sqlite-shm']) rmSync(join(config.dataDir, name), { force: true });
-      rmSync(join(config.dataDir, 'media'), { recursive: true, force: true });
-      for (const item of moved.reverse()) {
-        if (existsSync(item.targetPath)) renameSync(item.targetPath, item.source);
+      // 只逆转成功的搬移；保留未搬走的原件和无法回搬的备份。
+      const failures = [];
+      for (const { source, targetPath } of [...installed.reverse(), ...moved.reverse()]) {
+        try {
+          if (existsSync(source)) throw new Error(`回滚目标已存在：${source}`);
+          renameSync(targetPath, source);
+        } catch (rollbackError) {
+          failures.push(rollbackError);
+        }
       }
-      if (preRestoreDir && existsSync(preRestoreDir)) rmSync(preRestoreDir, { recursive: true, force: true });
+      if (failures.length) throw new AggregateError([error, ...failures], `回滚未完成，请保留并检查 ${preRestoreDir || config.dataDir}`);
+      if (preRestoreDir) rmdirSync(preRestoreDir);
       throw error;
     }
   } finally {

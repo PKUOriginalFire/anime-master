@@ -10,7 +10,7 @@ import {assetIds,freshState,newQuestion,questionSchema,type Show} from '../share
 const showFor=(question:any):Show=>({id:'stage-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',width:3904,height:672,items:[{id:'item',type:'question',question}],state:{...freshState(),phase:'question'}});
 const command=(action:'reveal'|'settle')=>({id:'command',version:1,action});
 
-test('揭晓和原结算命令合并为同一状态，选择题保留选项并标出正确项',()=>{
+test('揭晓和原结算命令合并为同一状态，答案覆盖选项区并保留显式结算素材',()=>{
  const q={...newQuestion('choice'),id:'choice',title:'问题标题',prompt:'问题正文',answer:'B 选项二',answerImage:'settlement-image',notes:'主持备注',config:{options:[{id:'A',text:'选项一'},{id:'B',text:'选项二'}],correctId:'B'}};
  const show=showFor(q);
  assert.equal(publicPacket(show).item.question.answer,undefined);
@@ -24,15 +24,22 @@ test('揭晓和原结算命令合并为同一状态，选择题保留选项并�
  for(const phase of ['answer','settlement'] as const){
   const packet=publicPacket({...show,state:{...reveal,phase}});
   const html=renderToStaticMarkup(createElement(Stage,{packet}));
-  assert.match(html,/stage-options/);
-  assert.match(html,/选项一/);
-  assert.match(html,/stage-option right/);
-  assert.match(html,/<section class="stage-content kind-choice">.*stage-options.*stage-answer-overlay.*src="\/api\/media\/settlement-image"/s);
+  assert.doesNotMatch(html,/stage-options|选项一/);
+  assert.match(html,/<section class="stage-content kind-choice">.*stage-answer-overlay.*src="\/api\/media\/settlement-image"/s);
   assert.equal((html.match(/alt="结算图片"/g)||[]).length,1);
   assert.match(html,/B 选项二/);
   assert.doesNotMatch(html,/ANIME QUIZ|QUESTION|ANSWER REVEALED|举手抢答|元火动漫社|主持备注|private-key/);
   assert.equal(packet.item.question.config.correctId,undefined);
  }
+});
+
+test('旧选择题缺少答案文字时覆盖层显示正确项，放大时才加载选项图',()=>{
+ const question={...newQuestion('choice'),answer:' ',config:{options:[{id:'A',text:'第一项',image:'right-picture'},{id:'B',text:'第二项'}],correctId:'A'}};
+ const show=showFor(question);
+ const state=advance(show.state,show.items,command('reveal'));
+ const html=renderToStaticMarkup(createElement(Stage,{packet:publicPacket({...show,state})}));
+ assert.match(html,/<h2>A · 第一项<\/h2>/);
+ assert.doesNotMatch(html,/right-picture|stage-options/);
 });
 
 test('合并结算后仍切换台词答案片段并等待主持播放',()=>{
@@ -71,4 +78,37 @@ test('题干配图通过保存校验并拒绝重复素材',()=>{
  assert.deepEqual(questionSchema.parse(q).promptImages,['stem-a','stem-b']);
  assert.throws(()=>questionSchema.parse({...q,promptImages:['stem-a','stem-a']}));
  assert.equal(questionSchema.parse({...q,promptImages:undefined}).promptImages,undefined);
+});
+
+test('放大选项独立于判定，延迟配图在揭晓后才能放大查看',()=>{
+ const question={...newQuestion('choice'),config:{options:[
+  {id:'A',text:'第一张图',image:'public-image'},
+  {id:'B',text:'第二张图',images:['later-image'],imageVisibility:'reveal'}
+ ],correctId:'B'}};
+ const show=showFor(question);
+ const focus={...command('reveal'),action:'focusOption' as const,option:'B'};
+ const state=advance(show.state,show.items,focus);
+ assert.deepEqual(state.choices,{});
+ for(const preview of [false,true]){
+  const packet=publicPacket({...show,state},preview);
+  const html=renderToStaticMarkup(createElement(Stage,{packet}));
+  assert.equal(packet.state.focusedOption,'B');
+  assert.ok(!JSON.stringify(packet).includes('later-image'));
+  assert.match(html,/stage-options is-focused/);
+  assert.match(html,/第二张图/);
+  assert.doesNotMatch(html,/第一张图|later-image|stage-option right/);
+ }
+ for(const action of ['waiting','reset','select','reveal','settle'] as const){
+  assert.equal(advance(state,show.items,{...focus,action,index:0}).focusedOption,undefined);
+ }
+ assert.throws(()=>advance(state,show.items,{...focus,option:'C'}),/选项不存在/);
+ assert.throws(()=>advance(freshState(),show.items,focus),/没有展示选择题/);
+ const revealed=advance(state,show.items,command('reveal'));
+ const refocused=advance(revealed,show.items,focus);
+ const html=renderToStaticMarkup(createElement(Stage,{packet:publicPacket({...show,state:refocused})}));
+ assert.match(html,/later-image/);
+ assert.doesNotMatch(html,/stage-answer-overlay/);
+ assert.equal(advance(refocused,show.items,{...focus,action:'answerStep'}).focusedOption,undefined);
+ const restored=advance(refocused,show.items,{...focus,option:undefined});
+ assert.deepEqual(restored,revealed);
 });

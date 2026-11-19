@@ -13,7 +13,7 @@ services:
       APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3010}
       APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-}
     volumes:
-      - ${DATA_DIR_HOST:-/opt/anime-quiz/data}:/data:Z
+      - ${DATA_DIR_HOST:-/opt/anime-quiz/data}:/data:z
     mem_limit: 768m
     cpus: 1.5
     security_opt:

@@ -1,8 +1,9 @@
 import {kindNames,type Kind} from '../shared/model';
 
-export type RundownItem =
- | {type:'question';questionId:string}
- | {type:'card';title:string;body:string;image?:string;id?:string};
+export type RundownItem = (
+ | {type:'question';questionId:string;itemId?:string}
+ | {type:'card';title:string;body:string;image?:string}
+) & {id?:string};
 
 export const typeInstructions:Record<Kind,string>={
  choice:'根据题目回答问题！\n都是单选题。',
@@ -19,9 +20,14 @@ export const raffleCard={title:'抽奖环节',body:''};
 export function withSectionTitles(items:RundownItem[],questionKinds:Record<string,Kind>,previousOpeningTitle?:string):RundownItem[]{
  const content=[...items];
  const first=content[0];
- if(first?.type==='card'&&['互动环节','元火动漫晚会',previousOpeningTitle].includes(first.title))content.shift();
+ let opening:RundownItem={type:'card',title:'互动环节',body:''};
+ if(first?.type==='card'&&['互动环节','元火动漫晚会',previousOpeningTitle].includes(first.title)){
+  content.shift();
+  const isDefault=!first.image&&((first.title==='互动环节'&&first.body==='')||first.body==='欢迎来到元火动漫晚会 · 互动环节');
+  opening=isDefault?{...first,title:'互动环节',body:''}:first;
+ }
  const kindByTitle=new Map(Object.entries(kindNames).map(([kind,title])=>[title,kind as Kind]));
- const result:RundownItem[]=[{type:'card',title:'互动环节',body:''}];
+ const result:RundownItem[]=[opening];
  let previousKind:Kind|undefined;
  for(const item of content){
   // 重建默认标题与说明页，反复打开编排时不会重复插入；自定义说明和奖品页保留。

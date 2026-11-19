@@ -23,5 +23,5 @@ exec docker run --rm --init \
   --security-opt no-new-privileges:true \
   --env-file "$env_file" \
   -e DATA_DIR=/data \
-  -v "$data_dir:/data:Z" \
+  -v "$data_dir:/data:z" \
   "$image" node scripts/webdav-backup.mjs

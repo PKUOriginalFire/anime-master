@@ -35,7 +35,7 @@ args=(--rm --init
   --security-opt no-new-privileges:true
   --env-file "$env_file"
   -e DATA_DIR=/data
-  -v "$data_dir:/data:Z")
+  -v "$data_dir:/data:z")
 if [[ -n "${WEBDAV_RESTORE_SNAPSHOT:-}" ]]; then
   args+=(-e "WEBDAV_RESTORE_SNAPSHOT=$WEBDAV_RESTORE_SNAPSHOT")
 fi

@@ -35,19 +35,19 @@ export const questionSchema = z.discriminatedUnion('kind',[
 ]);
 export type Question = z.infer<typeof questionSchema>;
 export type Status = 'draft'|'pending'|'to_implement'|'accepted'|'needs_changes'|'deleted';
-export type User = {id:string;username:string;reviewer:boolean;host:boolean;admin:boolean;disabled:boolean};
+export type User = {id:string;username:string;nickname:string;reviewer:boolean;host:boolean;admin:boolean;disabled:boolean};
 export type QuestionRow = Question & {id:string;authorId:string;author:string;status:Status;version:number;updatedAt:string};
 export type Card = {id:string;type:'card';title:string;body:string;image?:string};
 export type ShowItem = {id:string;type:'question';question:QuestionRow;blocked?:boolean;blockedReason?:string}|Card;
-export type MediaState = {playing:boolean;position:number;updatedAt:number;volume:number;muted:boolean;generation:number};
-export type StageState = {index:number;phase:'waiting'|'question'|'answer'|'settlement'|'full';step:number;answerStep?:number;choices:Record<string,'right'|'wrong'>;matches:{left:string;right:string;correct:boolean}[];media:MediaState};
+export type MediaState = {playing:boolean;position:number;updatedAt:number;volume:number;muted:boolean;generation:number;playRequest?:number};
+export type StageState = {index:number;phase:'waiting'|'question'|'answer'|'settlement'|'full';step:number;answerStep?:number;explanationPage?:number;focusedOption?:string;choices:Record<string,'right'|'wrong'>;matches:{left:string;right:string;correct:boolean}[];media:MediaState};
 export type Show = {id:string;title:string;version:number;items:ShowItem[];state:StageState;displayKey?:string;ownerId:string;width:number;height:number;lockedAt?:string;completedAt?:string};
 export type StagePacket = {id:string;title:string;version:number;state:StageState;item:any;displayKey?:string;width:number;height:number};
 export type ActivityOption = StageSize & {id:string;title:string;lockedAt?:string;completedAt?:string};
 export function canEditQuestion(u:User,q:Pick<QuestionRow,'authorId'|'status'>):boolean {return u.admin||q.authorId===u.id||(u.reviewer&&q.status!=='draft'&&q.status!=='deleted');}
 export function isActivityFrozen(a?:{lockedAt?:string;completedAt?:string}):boolean {return !!(a?.lockedAt||a?.completedAt);}
 export function activityStateName(a?:{lockedAt?:string;completedAt?:string}):''|'已锁定'|'已完成' {return a?.completedAt?'已完成':a?.lockedAt?'已锁定':'';}
-export const commandSchema=z.object({id:z.string().uuid(),version:z.number().int().nonnegative(),action:z.enum(['select','next','prev','step','back','answerStep','choice','match','revealPair','reveal','settle','full','reset','waiting','undo','play','pause','seek','volume','mute']),index:z.number().int().optional(),option:z.string().optional(),left:z.string().optional(),right:z.string().optional(),value:z.number().finite().optional()});
+export const commandSchema=z.object({id:z.string().uuid(),version:z.number().int().nonnegative(),action:z.enum(['select','next','prev','step','back','answerStep','explanationPage','choice','focusOption','match','revealPair','reveal','settle','full','reset','waiting','undo','play','pause','seek','volume','mute']),index:z.number().int().optional(),option:z.string().optional(),left:z.string().optional(),right:z.string().optional(),value:z.number().finite().optional()});
 export type Command=z.infer<typeof commandSchema>;
 
 export function isPlayable(item:ShowItem|undefined):boolean {return !!item&&(item.type!=='question'||!item.blocked);}
@@ -74,7 +74,28 @@ export function matchingItemLabels(items:{id:string}[],side:'left'|'right'):stri
   const label=candidates[cursor++]??String(index+1);used.add(label);return label;
  });
 }
-export function maxStep(q:Question):number {return q.kind==='scene'?Math.max(0,...q.config.regions.map(r=>r.group)):q.kind==='reasoning'?q.config.clues.length:0;}
+const graphemes=new Intl.Segmenter('zh',{granularity:'grapheme'});
+
+export function presentationPages(text:string):string[] {return textPages(text,36,8);}
+export function choiceExplanationPages(text=''):string[] {return textPages(text,28,7);}
+
+function textPages(text:string,columns:number,rows:number):string[] {
+ // 以字素和手工换行限制单页容量，让主持端和 OBS 对同一页的边界达成一致。
+ const pages:string[]=[];
+ let page='',row=1,column=0;
+ for(const {segment} of graphemes.segment(text)){
+  const newline=segment==='\n'||segment==='\r'||segment==='\r\n';
+  const width=segment==='\t'?4:1;
+  if(!newline&&column+width>columns){row++;column=0;}
+  if(row>rows){pages.push(page);page='';row=1;column=0;}
+  page+=segment;
+  if(newline){row++;column=0;}else column+=width;
+ }
+ if(page||!pages.length)pages.push(page);
+ return pages;
+}
+
+export function maxStep(q:Question):number {return q.kind==='innovation'?presentationPages(q.config.presentation).length-1:q.kind==='scene'?Math.max(0,...q.config.regions.map(r=>r.group)):q.kind==='reasoning'?q.config.clues.length:0;}
 export function maxAnswerStep(q:Question):number {return Math.max(1,...(q.answerGallery||[]).map(i=>i.group));}
 export function validateReady(q:Question):string[] {
  const errors:string[]=[];
