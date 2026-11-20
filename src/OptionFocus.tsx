@@ -18,7 +18,7 @@ export function OptionFocus({options,focused,revealed,explanationHidden,disabled
  return <div className="option-focus" role="group" aria-label="舞台放大">
   <strong>舞台放大：</strong>
   {revealed&&<button type="button" className="button secondary" disabled={disabled||showingExplanation} aria-pressed={showingExplanation} onClick={onShowExplanation}>显示解析</button>}
-  <button type="button" className="button secondary" disabled={disabled||showingAll} aria-pressed={showingAll} onClick={()=>onChange()}>显示所有选项</button>
+  <button type="button" className="button secondary option-focus-all" disabled={disabled||showingAll} aria-pressed={showingAll} onClick={()=>onChange()}>显示所有选项</button>
   {options.map((option,index)=>{
    const {id,imageVisibility}=option;
    const count=optionImages(option).length;
