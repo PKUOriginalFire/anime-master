@@ -70,9 +70,15 @@ const test=base.extend<{live:{read:()=>Show;publicStage:()=>Promise<string>}}>({
 });
 
 async function login(page:Page,username:string,button:string){
+ const submit=page.getByRole('button',{name:button});
+ await expect(submit).toBeVisible();
+ for(const width of [320,390]){
+  await page.setViewportSize({width,height:844});
+  await staysInViewport(page,submit);
+ }
  await page.getByLabel('登录用户名').fill(username);
  await page.getByLabel(/^密码/).fill(password);
- await page.getByRole('button',{name:button}).click();
+ await submit.click();
 }
 
 async function staysInViewport(page:Page,...buttons:Locator[]){
