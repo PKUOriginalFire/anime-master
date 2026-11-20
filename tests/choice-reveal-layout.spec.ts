@@ -134,6 +134,18 @@ for(const [width,height] of [[1920,1080],[3904,672]]){
   await expect.soft(images).toHaveCount(0,{timeout:1000});
   expect.soft(requestedImages,'普通揭晓画面没有请求选项图片').toEqual([]);
   await snapshot('reveal');
+
+  await changeStage({explanationHidden:true});
+  await expect(page.getByRole('region',{name:'答案与解析'})).toBeHidden();
+  await expect(page.getByRole('heading',{name:'找月亮'})).toBeVisible();
+  await expect(page.locator('.stage-option')).toHaveCount(options.length);
+  await expect(page.locator('.stage-option.right .stage-option-label b')).toHaveText('D');
+  await expect(images).toHaveCount(options.length);
+  await page.evaluate(()=>document.fonts.ready);
+  for(const label of await page.locator('.stage-option-label span').all()){
+   expect((await textGeometry(label)).hidden).toBe(0);
+  }
+
   for(const option of options){
    await changeStage({focusedOption:option.id});
    await expect(page.getByRole('region',{name:'答案与解析'})).toBeHidden();
@@ -156,7 +168,7 @@ for(const [width,height] of [[1920,1080],[3904,672]]){
    if(option.id==='D')await snapshot('focus');
   }
 
-  await changeStage({focusedOption:undefined});
+  await changeStage({focusedOption:undefined,explanationHidden:undefined});
   await assertExplanation();
   await expect.soft(images).toHaveCount(0,{timeout:1000});
 

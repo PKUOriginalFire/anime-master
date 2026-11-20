@@ -203,6 +203,7 @@
 
 .option-focus{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px}
 .option-focus button[aria-pressed="true"]{background:#305f55;color:#fff}
+.option-focus-image-count{font-size:.82em;margin-inline-start:.5em;white-space:nowrap}
 .stage-content .stage-options.is-focused{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 .is-focused .stage-option-label{line-height:1.55;font-size:min(calc(var(--stage-h) * .11),calc(var(--stage-w) * .075));padding:calc(24 * var(--tu));gap:calc(24 * var(--tu))}
 .is-focused .stage-option-label b,.is-focused .stage-option-label em{font-size:.8em}
@@ -216,8 +217,7 @@
 /* 选项配图共用有界网格；延迟配图揭晓后与答案摘要同时显示。 */
 .stage-option-images{flex:1;min-height:0;min-width:0;display:grid;grid-auto-rows:minmax(0,1fr);gap:calc(10 * var(--tu));padding:calc(12 * var(--tu))}
 .stage-option-images img{width:100%;height:100%;min-width:0;min-height:0;object-fit:contain}
-/* 选择题揭晓后，整块选项区用于答案和解析；主持放大选项时再显示相应配图。 */
-.kind-choice .stage-answer-overlay{background:#eef5e9;backdrop-filter:none}
+/* 选择题的答案与解析占用整个选项区。 */
 .kind-choice .stage-answer-copy{height:100%;max-height:100%;max-width:min(100%,calc(1800 * var(--tu)));display:flex;flex-direction:column;justify-content:center;gap:calc(18 * var(--tu));text-align:left}
 .kind-choice .stage-answer-overlay.has-image .stage-answer-copy{width:auto;max-width:none;flex:1;text-align:left}
 .kind-choice .stage-answer-copy h2{flex:0 0 auto;font-size:min(calc(var(--stage-h) * .105),calc(var(--stage-w) * .038));line-height:1.55;text-wrap:balance;max-height:100%}

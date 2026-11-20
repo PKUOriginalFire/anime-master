@@ -55,6 +55,32 @@ async function saveQuestion(page:Page){
  return saved!;
 }
 
+test('选择题的放大控件标注配图，揭晓后可切换解析和全部选项',async({page})=>{
+ const question={...newQuestion('choice'),...row,kind:'choice' as const,explanation:'测试解析',
+  config:{options:[{id:'A',text:'甲',image:'old-image',imageVisibility:'reveal' as const},{id:'B',text:'乙',images:['b1','b2']},{id:'C',text:'丙'}],correctId:'A'}};
+ await openWorkbench(page,[question]);
+ await editQuestion(page);
+ const focus=page.getByRole('group',{name:'舞台放大'});
+ const explanation=focus.getByRole('button',{name:'显示解析'});
+ const all=focus.getByRole('button',{name:'显示所有选项'});
+ const option=focus.getByRole('button',{name:'放大选项 A'});
+ await expect(explanation).toHaveCount(0);
+ await expect(all).toHaveAttribute('aria-pressed','true');
+ await expect(option).toHaveAccessibleDescription('揭晓后 1 张图');
+ await expect(focus.getByRole('button',{name:'放大选项 B'})).toHaveAccessibleDescription('2 张图');
+ await expect(focus.getByRole('button',{name:'放大选项 C'})).toHaveAccessibleDescription('无图');
+ await page.getByRole('button',{name:'揭晓答案与结算'}).click();
+ await expect(explanation).toHaveAttribute('aria-pressed','true');
+ await expect(option).toHaveAccessibleDescription('1 张图');
+ await all.click();
+ await expect(page.locator('.stage-option.right b')).toHaveText('A');
+ await expect(page.getByRole('region',{name:'答案与解析'})).toBeHidden();
+ await option.click();
+ await expect(page.locator('.stage-options.is-focused .stage-option b')).toHaveText('A');
+ await explanation.click();
+ await expect(page.getByRole('region',{name:'答案与解析'})).toContainText('测试解析');
+});
+
 test('素材并发返回时保存当前题干配图和选项图片顺序',async({page})=>{
  const initial={...newQuestion('choice'),...row,promptImages:['p1','p2','p3'],config:{options:[{id:'A',text:'选项甲',images:['o1','o2']},{id:'B',text:'选项乙'}],correctId:'A'}} as QuestionRow;
  await openWorkbench(page,[initial]);

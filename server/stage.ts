@@ -4,6 +4,8 @@ import {freshState,isPlayable,nextPlayableIndex,presentationPages,choiceExplanat
 export function advance(input:StageState,items:ShowItem[],c:Command):StageState {
  let s=structuredClone(input);const item=items[s.index];const blocked=item?.type==='question'&&item.blocked;const q=item?.type==='question'?item.question:undefined;
  const now=Date.now();
+ const revealed=s.phase==='answer'||s.phase==='settlement';
+ const showExplanation=()=>{delete s.focusedOption;delete s.explanationHidden;};
  const waiting=()=>{const {volume,muted,generation}=s.media;s=freshState(s.index);s.media={...s.media,volume,muted,generation:generation+1};};
  if(blocked){
   if(!['select','next','prev','reset','waiting','pause','volume','mute'].includes(c.action))throw new Error('此题正在修改或待审，已暂停播出，请切换其他节目');
@@ -15,24 +17,30 @@ export function advance(input:StageState,items:ShowItem[],c:Command):StageState 
  case 'next':{const index=nextPlayableIndex(items,s.index,1);if(index>=0)reset(index);else waiting();break;}
  case 'prev':{const index=nextPlayableIndex(items,s.index,-1);if(index>=0)reset(index);else waiting();break;}
  case 'reset':reset(s.index);break;
- case 'waiting':delete s.focusedOption;delete s.explanationPage;s.phase='waiting';s.media.playing=false;break;
+ case 'waiting':showExplanation();delete s.explanationPage;s.phase='waiting';s.media.playing=false;break;
  case 'step':if(q)s.step=Math.min(maxStep(q),s.step+1);break;
  case 'back':s.step=Math.max(0,s.step-1);break;
  case 'answerStep':
-  if(q&&['answer','settlement'].includes(s.phase)){
-   delete s.focusedOption;
+  if(q&&revealed){
+   showExplanation();
    s.answerStep=Math.min(maxAnswerStep(q),(s.answerStep||1)+1);
   }
   break;
  case 'explanationPage':
-  if(q?.kind==='choice'&&['answer','settlement'].includes(s.phase)&&c.index!==undefined){
-   delete s.focusedOption;
+  if(q?.kind==='choice'&&revealed&&c.index!==undefined){
+   showExplanation();
    s.explanationPage=Math.max(1,Math.min(c.index,choiceExplanationPages(q.explanation).length));
   }
   break;
+ case 'showExplanation':
+  if(q?.kind==='choice'&&revealed)showExplanation();
+  break;
  case 'focusOption':
-  if(q?.kind!=='choice'||!['question','answer','settlement'].includes(s.phase))throw new Error('当前没有展示选择题');
-  if(c.option===undefined)delete s.focusedOption;
+  if(q?.kind!=='choice'||s.phase!=='question'&&!revealed)throw new Error('当前没有展示选择题');
+  if(c.option===undefined){
+   delete s.focusedOption;
+   if(revealed)s.explanationHidden=true;
+  }
   else if(q.config.options.some(option=>option.id===c.option))s.focusedOption=c.option;
   else throw new Error('选项不存在');
   break;
@@ -41,7 +49,7 @@ export function advance(input:StageState,items:ShowItem[],c:Command):StageState 
  case 'revealPair':if(q?.kind==='matching'){const p=q.config.pairs.find(p=>!s.matches.some(m=>m.left===p.left&&m.right===p.right&&m.correct));if(p){s.matches=s.matches.filter(m=>m.left!==p.left);s.matches.push({...p,correct:true});}}break;
  case 'full':s.phase='full';break;
  case 'reveal':
- case 'settle':delete s.focusedOption;delete s.explanationPage;s.phase='answer';s.answerStep=1;s.media.playing=false;s.media.position=q?.kind==='dialogue'?q.config.answerStart:0;s.media.generation++;if(q?.kind==='choice')s.choices[q.config.correctId]='right';break;
+ case 'settle':showExplanation();delete s.explanationPage;s.phase='answer';s.answerStep=1;s.media.playing=false;s.media.position=q?.kind==='dialogue'?q.config.answerStart:0;s.media.generation++;if(q?.kind==='choice')s.choices[q.config.correctId]='right';break;
  case 'play':
   s.media.playRequest=Math.max(now,(s.media.playRequest??0)+1);
   if(!s.media.playing){s.media.playing=true;s.media.updatedAt=now;s.media.generation++;}

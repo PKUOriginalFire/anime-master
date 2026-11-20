@@ -5,10 +5,10 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {Stage} from '../src/Stage.tsx';
 import {advance,publicPacket} from '../server/stage.ts';
-import {assetIds,freshState,newQuestion,questionSchema,type Show} from '../shared/model.ts';
+import {assetIds,freshState,newQuestion,questionSchema,type Command,type Show} from '../shared/model.ts';
 
 const showFor=(question:any):Show=>({id:'stage-test',title:'活动名称',version:1,ownerId:'author-id',displayKey:'private-key',width:3904,height:672,items:[{id:'item',type:'question',question}],state:{...freshState(),phase:'question'}});
-const command=(action:'reveal'|'settle')=>({id:'command',version:1,action});
+const command=(action:Command['action'])=>({id:'command',version:1,action});
 
 test('揭晓和原结算命令合并为同一状态，答案覆盖选项区并保留显式结算素材',()=>{
  const q={...newQuestion('choice'),id:'choice',title:'问题标题',prompt:'问题正文',answer:'B 选项二',answerImage:'settlement-image',notes:'主持备注',config:{options:[{id:'A',text:'选项一'},{id:'B',text:'选项二'}],correctId:'B'}};
@@ -109,6 +109,37 @@ test('放大选项独立于判定，延迟配图在揭晓后才能放大查看',
  assert.match(html,/later-image/);
  assert.doesNotMatch(html,/stage-answer-overlay/);
  assert.equal(advance(refocused,show.items,{...focus,action:'answerStep'}).focusedOption,undefined);
- const restored=advance(refocused,show.items,{...focus,option:undefined});
- assert.deepEqual(restored,revealed);
+ const allOptions=advance(refocused,show.items,command('focusOption'));
+ assert.deepEqual(allOptions,{...revealed,explanationHidden:true});
+ assert.deepEqual(advance(allOptions,show.items,command('showExplanation')),revealed);
+ assert.deepEqual(advance(state,show.items,command('showExplanation')),state);
+});
+
+test('选择题的解析页和结算进度可在三种揭晓视图之间保留',()=>{
+ const question={...newQuestion('choice'),explanation:'甲'.repeat(197),answerGallery:[
+  {id:'first',group:1,image:'image-one'},
+  {id:'next',group:2,image:'image-two'},
+ ]};
+ const show=showFor(question);
+ const revealed=advance(show.state,show.items,command('reveal'));
+ assert.equal(revealed.explanationHidden,undefined);
+ const pageTwo=advance(revealed,show.items,{...command('explanationPage'),index:2});
+ const settled=advance(pageTwo,show.items,command('answerStep'));
+ const allOptions=advance(settled,show.items,command('focusOption'));
+ const focused=advance(allOptions,show.items,{...command('focusOption'),option:'A'});
+ const packet=publicPacket({...show,state:focused});
+ assert.equal(packet.state.explanationHidden,true);
+ assert.equal(packet.state.focusedOption,'A');
+ assert.equal(packet.state.explanationPage,2);
+ assert.equal(packet.state.answerStep,2);
+ assert.deepEqual(advance(focused,show.items,command('showExplanation')),settled);
+ const pageOne=advance(allOptions,show.items,{...command('explanationPage'),index:1});
+ assert.equal(pageOne.explanationPage,1);
+ assert.equal(pageOne.answerStep,2);
+ assert.equal(pageOne.explanationHidden,undefined);
+ const nextGroup=advance({...allOptions,answerStep:1},show.items,command('answerStep'));
+ assert.deepEqual(nextGroup,settled);
+ for(const action of ['waiting','reset','reveal'] as const){
+  assert.equal(advance(allOptions,show.items,command(action)).explanationHidden,undefined);
+ }
 });

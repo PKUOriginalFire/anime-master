@@ -40,14 +40,14 @@ export type QuestionRow = Question & {id:string;authorId:string;author:string;st
 export type Card = {id:string;type:'card';title:string;body:string;image?:string};
 export type ShowItem = {id:string;type:'question';question:QuestionRow;blocked?:boolean;blockedReason?:string}|Card;
 export type MediaState = {playing:boolean;position:number;updatedAt:number;volume:number;muted:boolean;generation:number;playRequest?:number};
-export type StageState = {index:number;phase:'waiting'|'question'|'answer'|'settlement'|'full';step:number;answerStep?:number;explanationPage?:number;focusedOption?:string;choices:Record<string,'right'|'wrong'>;matches:{left:string;right:string;correct:boolean}[];media:MediaState};
+export type StageState = {index:number;phase:'waiting'|'question'|'answer'|'settlement'|'full';step:number;answerStep?:number;explanationPage?:number;explanationHidden?:boolean;focusedOption?:string;choices:Record<string,'right'|'wrong'>;matches:{left:string;right:string;correct:boolean}[];media:MediaState};
 export type Show = {id:string;title:string;version:number;items:ShowItem[];state:StageState;displayKey?:string;ownerId:string;width:number;height:number;lockedAt?:string;completedAt?:string};
 export type StagePacket = {id:string;title:string;version:number;state:StageState;item:any;displayKey?:string;width:number;height:number};
 export type ActivityOption = StageSize & {id:string;title:string;lockedAt?:string;completedAt?:string};
 export function canEditQuestion(u:User,q:Pick<QuestionRow,'authorId'|'status'>):boolean {return u.admin||q.authorId===u.id||(u.reviewer&&q.status!=='draft'&&q.status!=='deleted');}
 export function isActivityFrozen(a?:{lockedAt?:string;completedAt?:string}):boolean {return !!(a?.lockedAt||a?.completedAt);}
 export function activityStateName(a?:{lockedAt?:string;completedAt?:string}):''|'已锁定'|'已完成' {return a?.completedAt?'已完成':a?.lockedAt?'已锁定':'';}
-export const commandSchema=z.object({id:z.string().uuid(),version:z.number().int().nonnegative(),action:z.enum(['select','next','prev','step','back','answerStep','explanationPage','choice','focusOption','match','revealPair','reveal','settle','full','reset','waiting','undo','play','pause','seek','volume','mute']),index:z.number().int().optional(),option:z.string().optional(),left:z.string().optional(),right:z.string().optional(),value:z.number().finite().optional()});
+export const commandSchema=z.object({id:z.string().uuid(),version:z.number().int().nonnegative(),action:z.enum(['select','next','prev','step','back','answerStep','explanationPage','showExplanation','choice','focusOption','match','revealPair','reveal','settle','full','reset','waiting','undo','play','pause','seek','volume','mute']),index:z.number().int().optional(),option:z.string().optional(),left:z.string().optional(),right:z.string().optional(),value:z.number().finite().optional()});
 export type Command=z.infer<typeof commandSchema>;
 
 export function isPlayable(item:ShowItem|undefined):boolean {return !!item&&(item.type!=='question'||!item.blocked);}
