@@ -131,6 +131,54 @@ test('连线揭晓配图可先上传，已移除的项目不会被旧上传恢�
  ]);
 });
 
+test('编排只添加选中的题目，并可直接指定节目位置',async({page})=>{
+ const original={...newQuestion('choice'),...row,status:'accepted' as const,title:'已有选择题'};
+ const added={...newQuestion('music'),...row,id:'music-question',status:'accepted' as const,title:'新增音乐题'};
+ const explanation={id:'type-card',type:'card' as const,title:'选择题',body:'根据题目回答问题！\n都是单选题。'};
+ const existing:Show={...show,items:[...show.items,explanation,{id:'retained-item',type:'question',question:original}]};
+ let saved:unknown;
+ await openWorkbench(page,[original,added]);
+ await page.route('**/api/shows',route=>route.fulfill({json:[existing]}));
+ await page.route('**/api/shows/test-show',async route=>{
+  if(route.request().method()==='GET'){await route.fulfill({json:existing});return;}
+  saved=route.request().postDataJSON();
+  await route.fulfill({json:{...existing,version:2,items:[{id:'added-item',type:'question',question:added},...existing.items]}});
+ });
+ await page.getByRole('button',{name:'活动管理',exact:true}).click();
+ await page.getByRole('button',{name:'进入控制台 / 编排'}).click();
+ await page.getByRole('button',{name:'编排题单'}).click();
+
+ const headings=page.locator('.compose-item .panel-heading strong');
+ await expect(headings).toHaveText(['1. 互动环节','2. 选择题','3. 已有选择题']);
+ await page.getByRole('button',{name:/新增音乐题/}).click();
+ const originalOrder=['1. 互动环节','2. 选择题','3. 已有选择题','4. 新增音乐题'];
+ await expect(headings).toHaveText(originalOrder);
+
+ const position=page.getByRole('spinbutton',{name:'新增音乐题的目标位置'});
+ await position.fill('5');
+ await position.press('Enter');
+ await expect(headings).toHaveText(originalOrder);
+ await position.fill('1');
+ await page.locator('.compose-item').filter({has:position}).getByRole('button',{name:'移动',exact:true}).click();
+ await expect(headings).toHaveText(['1. 新增音乐题','2. 互动环节','3. 选择题','4. 已有选择题']);
+
+ await page.getByRole('button',{name:'保存节目单'}).click();
+ await expect(page.getByRole('status').filter({hasText:'题单已保存'})).toBeVisible();
+ expect(saved).toMatchObject({version:1,items:[
+  {type:'question',questionId:added.id},
+  {type:'card',title:'互动环节',body:'旧节目内容'},
+  {type:'card',title:explanation.title,body:explanation.body},
+  {type:'question',questionId:original.id,itemId:'retained-item'}
+ ]});
+
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'编排题单'}).click();
+ await expect(headings).toHaveText(['1. 新增音乐题','2. 互动环节','3. 选择题','4. 已有选择题']);
+ await expect(position).toBeVisible();
+ const modal=page.locator('.compose-modal');
+ expect(await modal.evaluate(node=>node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
+});
+
 test('节目单及两个活动设置入口在版本冲突后可以核对并重新保存',async({page})=>{
  let latest=show;
  const versions:number[]=[];

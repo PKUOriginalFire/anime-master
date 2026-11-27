@@ -7,7 +7,7 @@ import {Field,AssetField} from './Editor';
 import {OptionFocus} from './OptionFocus';
 import {PresenterPreview} from './PresenterPreview';
 import {Stage,type Telemetry} from './Stage';
-import {withSectionTitles,raffleCard,type RundownItem} from './rundown';
+import {moveRundownItem,raffleCard,type RundownItem} from './rundown';
 import {publicPacket} from '../server/stage';
 import {DEFAULT_STAGE_HEIGHT,DEFAULT_STAGE_WIDTH,kindNames,matchingItemLabels,maxStep,maxAnswerStep,choiceExplanationPages,isPlayable,nextPlayableIndex,type Show,type QuestionRow,type Command,type StagePacket,type User} from '../shared/model';
 import {StageSizeFields,isValidStageSize} from './StageSizeFields';
@@ -107,11 +107,11 @@ export function Host({questions,notify,initialShow,user,onBackActivities,standal
   return()=>{active=false;s.disconnect();if(socket.current===s)socket.current=null;setConnected(false);setPresence([]);};
  },[show?.id,canControl,standalone]);
  const command=(action:Command['action'],extra:Partial<Command>={})=>{if(!canControl)return;const s=current.current;if(!s||!socket.current?.connected||pending){notify('请等待控制台连接或当前操作完成');return;}if(!isPlayable(s.items[s.state.index])&&!['next','prev','waiting','select'].includes(action)){const item=s.items[s.state.index];notify(item?.type==='question'&&item.blockedReason?item.blockedReason+'。请切换候场或跳到其他节目。':'当前题目已暂停，请切换候场或跳到其他节目。');return;}if(action==='select'&&extra.index!==undefined&&!isPlayable(s.items[extra.index])){const item=s.items[extra.index];notify(item?.type==='question'&&item.blockedReason?item.blockedReason+'，已自动跳过。':'此题已暂停，已自动跳过。');return;}const payload={id:createUuid(),version:s.version,action,...extra};setPending(true);let attempts=0;const send=()=>socket.current?.timeout(4000).emit('command',payload,(err:any,result:any)=>{if(current.current?.id!==s.id)return;if(err&&attempts++===0){send();return;}setPending(false);if(err){notify('操作确认超时，请查看当前画面后重试');return;}if(result.show)setShow(result.show);if(!result.ok)notify(result.error);});send();};
- const prepareRundown=(snapshot:Show,items:RundownItem[])=>withSectionTitles(items,Object.fromEntries([...questions.map(q=>[q.id,q.kind]),...snapshot.items.flatMap(i=>i.type==='question'?[[i.question.id,i.question.kind]]:[])]),snapshot.title).map(item=>({...item,id:item.id||createUuid()}));
  const beginCompose=(snapshot:Show)=>{
-  setDraft(prepareRundown(snapshot,snapshot.items.map(item=>item.type==='question'?{type:'question',questionId:item.question.id,itemId:item.id,id:item.id}:item)));
+  setDraft(snapshot.items.map(item=>item.type==='question'?{type:'question',questionId:item.question.id,itemId:item.id,id:item.id}:item));
   setCompose({showId:snapshot.id,version:snapshot.version,title:snapshot.title});
  };
+ const moveDraftItem=(id:string,targetIndex:number)=>setDraft(previous=>moveRundownItem(previous,id,targetIndex));
  const composeStale=!!compose&&(compose.stale||compose.version!==show?.version);
  const saveOrReloadRundown=async()=>{
   if(!compose||composeBusy||(!composeStale&&!draft.length))return;
@@ -325,6 +325,55 @@ export function Host({questions,notify,initialShow,user,onBackActivities,standal
    </div>}
  <div className="two-columns"><div className="panel host-answer"><span className="eyebrow">{canControl?'主持人参考':'审题参考'}</span><h3>答案与备注</h3><p>{blocked?'本题已暂停，答案已隐藏。':q?.answer||'当前为展示页面'}</p><small>{blocked?'请在题库处理此题。':q?.notes||'暂无主持备注'}</small></div><div className="panel"><span className="eyebrow">UP NEXT</span><h3>{nextItem?.type==='question'?nextItem.question.title:nextItem?.title||'没有下一个可播放节目'}</h3><p className="muted">按原顺序自动跳过已暂停的题目。切题会停止上一题的音视频。</p></div></div></div></div>
  {canControl&&renaming&&<div className="modal-backdrop"><form className="modal activity-name-modal" onSubmit={event=>{event.preventDefault();void saveShowSettings();}}><div className="panel-heading"><h2>活动设置</h2><button type="button" className="text-button" disabled={renamingBusy} onClick={()=>setRenaming(undefined)}>关闭</button></div><Field label="活动名称" hint="修改名称与舞台分辨率，不改变节目单和当前播放状态；分辨率变化后舞台与题目预览会按新比例重新排版。"><input autoFocus aria-label="新的活动名称" value={renaming.title} maxLength={120} disabled={renamingBusy||renaming.stale} onChange={event=>setRenaming({...renaming,title:event.target.value})}/></Field><StageSizeFields width={renaming.width} height={renaming.height} disabled={renamingBusy||renaming.stale} onChange={(width,height)=>setRenaming(previous=>previous?{...previous,width,height}:previous)}/>{renaming.stale&&<p className="danger-text" role="alert">活动设置已更新。请载入最新设置，核对后重新修改并保存。</p>}<div className="modal-footer"><span>1 至 120 个字符</span><button type="submit" className="button" disabled={renamingBusy||(!renaming.stale&&(!renaming.title.trim()||!isValidStageSize(renaming.width,renaming.height)))}>{renamingBusy?'处理中…':renaming.stale?'载入最新设置':'保存设置'}</button></div></form></div>}
- {canControl&&compose&&<div className="modal-backdrop"><div className="modal compose-modal"><div className="panel-heading"><h2>编排节目单</h2><button className="text-button" disabled={composeBusy} onClick={()=>setCompose(undefined)}>关闭</button></div><p className="muted">已补齐开场、各组题型说明和抽奖环节，可调整顺序及文字。保存会回到候场。</p><p className="compose-status-hint">题目内容统一在题库修改。标红题目保留原位置，播放时自动跳过；新增题目仅限已录用内容。</p>{composeStale&&<p className="danger-text" role="alert">活动版本已更新。请核对当前草稿，再载入最新节目单重新编排。</p>}<div className="compose-grid"><div><h3>已录用题目</h3>{questions.filter(q=>q.status==='accepted'&&(!q.activityId||q.activityId===show.id)).map(q=><button className="pick-question" key={q.id} onClick={()=>setDraft(prepareRundown(show,[...draft,{type:'question',questionId:q.id}]))}><span>{kindNames[q.kind]}</span>{q.title}<b>＋</b></button>)}<h3>添加展示页</h3><div className="actions">{Object.entries(templates).map(([k,t])=><button className="button secondary" key={k} onClick={()=>setDraft([...draft,{type:'card',id:createUuid(),...t}])}>{({opening:'开场',raffle:'抽奖环节',instruction:'题型说明',waiting:'候场',prize:'奖品',ending:'结束'} as any)[k]}</button>)}</div></div><div>{draft.map((i,n)=>{const stored=i.type==='question'?show.items.find(item=>item.id===i.itemId):undefined;const blocked=stored?.type==='question'&&!isPlayable(stored);return <div className={'compose-item '+(blocked?'is-blocked':'')} key={i.id}><div className="panel-heading"><strong>{n+1}. {i.type==='question'?(stored?.type==='question'?stored.question.title:questions.find(q=>q.id===i.questionId)?.title||'原版本题目'):i.title}</strong><div><button className="text-button" disabled={n===0} onClick={()=>{const a=[...draft];[a[n-1],a[n]]=[a[n],a[n-1]];setDraft(a);}}>↑</button><button className="text-button" disabled={n===draft.length-1} onClick={()=>{const a=[...draft];[a[n+1],a[n]]=[a[n],a[n+1]];setDraft(a);}}>↓</button><button className="text-button danger" onClick={()=>setDraft(draft.filter((_,j)=>j!==n))}>移除</button></div></div>{blocked&&<div className="compose-blocked-status"><strong>已暂停 · 自动跳过</strong>{stored?.type==='question'&&stored.blockedReason&&<p>{stored.blockedReason}</p>}</div>}{i.type==='card'&&<><input aria-label="展示页标题" value={i.title} onChange={e=>changeDraftCard(i.id,{title:e.target.value})}/><textarea aria-label="展示页正文" value={i.body} onChange={e=>changeDraftCard(i.id,{body:e.target.value})}/><AssetField label="展示图" value={i.image} notify={notify} onChange={image=>changeDraftCard(i.id,{image})}/></>}</div>;})}</div></div><div className="modal-footer"><span>{draft.length} 个节目画面</span><button className="button" disabled={composeBusy||(!composeStale&&!draft.length)} onClick={()=>void saveOrReloadRundown()}>{composeBusy?'处理中…':composeStale?'载入最新节目单':'保存节目单'}</button></div></div></div>}
+ {canControl&&compose&&<div className="modal-backdrop"><div className="modal compose-modal">
+  <div className="panel-heading"><h2>编排节目单</h2><button className="text-button" disabled={composeBusy} onClick={()=>setCompose(undefined)}>关闭</button></div>
+  <p className="muted">输入目标序号后点击「移动」。序号包含展示页，保存后会回到候场。</p>
+  <p className="compose-status-hint">题目内容请在题库修改。标红题目播放时自动跳过，仅可添加已录用题目。</p>
+  {composeStale&&<p className="danger-text" role="alert">活动版本已更新。请核对当前草稿，再载入最新节目单重新编排。</p>}
+  <div className="compose-grid">
+   <div>
+    <h3>已录用题目</h3>
+    {questions.filter(q=>q.status==='accepted'&&(!q.activityId||q.activityId===show.id)).map(q=><button className="pick-question" key={q.id} onClick={()=>{
+     const id=createUuid();
+     setDraft(previous=>[...previous,{type:'question',questionId:q.id,id}]);
+    }}><span>{kindNames[q.kind]}</span>{q.title}<b>＋</b></button>)}
+    <h3>添加展示页</h3>
+    <div className="actions">{Object.entries(templates).map(([k,t])=><button className="button secondary" key={k} onClick={()=>{
+     const id=createUuid();
+     setDraft(previous=>[...previous,{type:'card',id,...t}]);
+    }}>{({opening:'开场',raffle:'抽奖环节',instruction:'题型说明',waiting:'候场',prize:'奖品',ending:'结束'} as any)[k]}</button>)}</div>
+   </div>
+   <div>
+    <h3>节目顺序</h3>
+    {draft.map((i,n)=>{
+     const stored=i.type==='question'?show.items.find(item=>item.id===i.itemId):undefined;
+     const blocked=stored?.type==='question'&&!isPlayable(stored);
+     const itemTitle=i.type==='question'?(stored?.type==='question'?stored.question.title:questions.find(q=>q.id===i.questionId)?.title||'原版本题目'):i.title;
+     return <div className={'compose-item '+(blocked?'is-blocked':'')} key={i.id}>
+      <div className="panel-heading">
+       <strong>{n+1}. {itemTitle}</strong>
+       <div className="compose-item-actions">
+        <form className="compose-order" onSubmit={event=>{
+         event.preventDefault();
+         const position=event.currentTarget.elements.namedItem('position') as HTMLInputElement;
+         moveDraftItem(i.id,position.valueAsNumber-1);
+         event.currentTarget.reset();
+        }}>
+         <input type="number" name="position" aria-label={itemTitle+'的目标位置'} placeholder={String(n+1)} min={1} max={draft.length} step={1} required disabled={composeBusy||draft.length===1}/>
+         <button type="submit" className="text-button" disabled={composeBusy||draft.length===1}>移动</button>
+        </form>
+        <button type="button" className="text-button" aria-label="上移" disabled={composeBusy||n===0} onClick={()=>moveDraftItem(i.id,n-1)}>↑</button>
+        <button type="button" className="text-button" aria-label="下移" disabled={composeBusy||n===draft.length-1} onClick={()=>moveDraftItem(i.id,n+1)}>↓</button>
+        <button type="button" className="text-button danger" onClick={()=>setDraft(previous=>previous.filter(item=>item.id!==i.id))}>移除</button>
+       </div>
+      </div>
+      {blocked&&<div className="compose-blocked-status"><strong>已暂停 · 自动跳过</strong>{stored?.type==='question'&&stored.blockedReason&&<p>{stored.blockedReason}</p>}</div>}
+      {i.type==='card'&&<><input aria-label="展示页标题" value={i.title} onChange={e=>changeDraftCard(i.id,{title:e.target.value})}/><textarea aria-label="展示页正文" value={i.body} onChange={e=>changeDraftCard(i.id,{body:e.target.value})}/><AssetField label="展示图" value={i.image} notify={notify} onChange={image=>changeDraftCard(i.id,{image})}/></>}
+     </div>;
+    })}
+   </div>
+  </div>
+  <div className="modal-footer"><span>{draft.length} 个节目画面</span><button className="button" disabled={composeBusy||(!composeStale&&!draft.length)} onClick={()=>void saveOrReloadRundown()}>{composeBusy?'处理中…':composeStale?'载入最新节目单':'保存节目单'}</button></div>
+ </div></div>}
  </>;
 }
